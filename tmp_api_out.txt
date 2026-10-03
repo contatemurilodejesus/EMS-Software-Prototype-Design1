@@ -1,0 +1,2 @@
+{"level":30,"time":"2026-10-03T01:57:02.108Z","service":"energymatrix-ems-api","version":"2.0.0","name":"energymatrix-ems-api","service":"energymatrix-ems-api","url":"http://localhost:8787/api","persistence":"memory","live":true,"simulatorIntervalMs":5000,"msg":"server_started"}
+{"level":30,"time":"2026-10-03T01:57:06.801Z","service":"energymatrix-ems-api","version":"2.0.0","name":"energymatrix-ems-api","service":"energymatrix-ems-api","requestId":"b16b7c1c-4b40-4217-85a6-758b58b9c4fa","method":"GET","path":"/api/machines","status":200,"durationMs":7,"msg":"http_request"}
