@@ -118,7 +118,8 @@ export const COMPETITION_MACHINES: readonly CompetitionProfile[] = [
 ]
 
 /** Ruido determinístico em [-1, 1] - substituto de Math.random() (shared). */
-export { dnoise, hashId } from "../shared/utils/deterministic.ts"
+import { dnoise, hashId } from "../shared/utils/deterministic.ts"
+export { dnoise, hashId }
 
 const r1 = (value: number): number => Number((Number(value) || 0).toFixed(1))
 
