@@ -22,8 +22,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      // Backend EnergyMatrix EMS exposto em /api/* (dev e preview).
-      emsApiPlugin({ live: true, tickIntervalMs: 5000 }),
+      // API OFICIAL do EnergyMatrix (Express) exposta em /api/* no dev/preview.
+      // Sem rota duplicada: o plugin encaminha ao mesmo Express da producao.
+      emsApiPlugin(),
       figmaSiteConfiguration(siteConfiguration),
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),

@@ -1,25 +1,41 @@
 /**
  * Middlewares HTTP (ordem explicita, secao 8 do documento):
- *   requestId -> helmet/cors -> json parser -> logger -> rotas -> notFound
- *   -> errorHandler.
+ *   requestId -> helmet/cors -> rateLimit -> json parser -> logger -> rotas
+ *   -> notFound -> errorHandler.
  *
  * Os middlewares sao a UNICA ponte entre HTTP e a aplicacao: nenhum deles
  * contem regra de negocio.
+ *
+ * Autenticacao (secao 7): `authenticate` valida o access token, publica o
+ * ator em `AsyncLocalStorage` (tenant EXPLICITO vem do token - nunca do
+ * body/query/header) e `requireRole` aplica o RBAC (D13).
  */
 
 import { randomUUID } from "node:crypto"
 import type { NextFunction, Request, RequestHandler, Response } from "express"
 import { ZodError, type ZodType } from "zod"
 import {
+  ForbiddenError,
   NotFoundError,
+  RateLimitError,
+  UnauthorizedError,
+  ERROR_CODES,
   isAppError,
   statusOf,
   toErrorBody,
   ValidationError,
 } from "../../domain/errors/index.ts"
+import { runWithActor } from "../../shared/tenant-context.ts"
+import type { UserRole } from "../../domain/value-objects/index.ts"
+import type { AuthService } from "../../application/services/auth.service.ts"
 import type { Logger } from "../../domain/ports/index.ts"
 
-export type RequestWithContext = Request & { requestId?: string; startedAt?: number }
+export type RequestWithContext = Request & {
+  requestId?: string
+  startedAt?: number
+  /** Ator autenticado publicado pelo middleware `authenticate`. */
+  actor?: { tenantId: string; userId: string; role: UserRole }
+}
 
 /**
  * Requisicao com parametros de rota sempre string (o roteador garante o
@@ -63,6 +79,101 @@ export function asyncHandler(
 ): RequestHandler {
   return (req, res, next) => {
     handler(req as unknown as RouteRequest, res, next).catch(next)
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Autenticacao e autorizacao (secao 7)                                */
+/* ------------------------------------------------------------------ */
+
+/** Extrai o access token do header Authorization. */
+function bearerToken(req: Request): string | null {
+  const header = req.headers.authorization
+  if (!header || !header.toLowerCase().startsWith("bearer ")) return null
+  const token = header.slice(7).trim()
+  return token || null
+}
+
+/**
+ * Exige access token valido e publica o ator no contexto da requisicao.
+ * O `tenantId` vem SEMPRE das claims do token (secao 7.1.1) - os repositories
+ * leem `currentTenantId()` para filtrar.
+ */
+export function authenticate(auth: AuthService): RequestHandler {
+  return (req, res, next) => {
+    const token = bearerToken(req)
+
+    if (!token) {
+      next(new UnauthorizedError("Token de acesso ausente", ERROR_CODES.UNAUTHORIZED))
+      return
+    }
+
+    auth
+      .authenticate(token)
+      .then(({ user }) => {
+        const actor = { tenantId: user.tenantId, userId: user.id, role: user.role }
+        ;(req as RequestWithContext).actor = actor
+        res.setHeader("X-Tenant-Id", actor.tenantId)
+        // Todo o restante da requisicao roda com o tenant do token.
+        runWithActor(actor, next)
+      })
+      .catch(next)
+  }
+}
+
+/** RBAC (D13): ADMIN / ACCOUNTING / MACHINE_EVALUATOR por endpoint. */
+export function requireRole(...roles: UserRole[]): RequestHandler {
+  return (req, _res, next) => {
+    const actor = (req as RequestWithContext).actor
+    if (!actor) {
+      next(new UnauthorizedError("Sessao ausente", ERROR_CODES.UNAUTHORIZED))
+      return
+    }
+    if (roles.length && !roles.includes(actor.role)) {
+      next(
+        new ForbiddenError(
+          `Acesso restrito a: ${roles.join(", ")}`,
+          ERROR_CODES.FORBIDDEN,
+        ),
+      )
+      return
+    }
+    next()
+  }
+}
+
+/**
+ * Rate limiting em memoria por janela deslizante simples (secao 7.2:
+ * "ha rate limiting nas tentativas"). Suficiente para o MVP; em producao
+ * o mesmo contrato pode ser servido por Redis.
+ */
+export function rateLimit(options: { windowMs: number; max: number; message?: string }): RequestHandler {
+  const hits = new Map<string, { count: number; resetAt: number }>()
+
+  return (req, res, next) => {
+    const now = Date.now()
+    const key = req.ip ?? req.socket.remoteAddress ?? "desconhecido"
+    const entry = hits.get(key)
+
+    if (!entry || entry.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + options.windowMs })
+      next()
+      return
+    }
+
+    entry.count += 1
+    if (entry.count > options.max) {
+      res.setHeader("Retry-After", String(Math.ceil((entry.resetAt - now) / 1000)))
+      next(
+        new RateLimitError(
+          options.message ?? "Muitas requisicoes. Tente novamente em instantes.",
+          { retryAfterSeconds: Math.ceil((entry.resetAt - now) / 1000) },
+        ),
+      )
+      return
+    }
+
+    next()
   }
 }
 

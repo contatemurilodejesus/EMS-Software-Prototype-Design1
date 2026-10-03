@@ -43,7 +43,7 @@ export function createSimulatorSource(options: SimulatorSourceOptions): Telemetr
       return machines.map((machine) => {
         const seed = hashId(machine.id) + seedBase
         const state = classifyState(machine.power, machine.pOff, machine.pRun)
-        const off = state === "OFF"
+        const off = state === "STOPPED"
 
         // Maquina desligada: 0 kW reportado (GOOD). Nao ha consumo a acumular.
         const powerKw = off ? 0 : Number(jitter(machine.power, 0.01, step, seed).toFixed(1))
@@ -65,6 +65,7 @@ export function createSimulatorSource(options: SimulatorSourceOptions): Telemetr
           temperatureC,
           state,
           quality: classifyReadingQuality({ hasValue: !off }),
+          source: "SIMULATED",
         }
       })
     },

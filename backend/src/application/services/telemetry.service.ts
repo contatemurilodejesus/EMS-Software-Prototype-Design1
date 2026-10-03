@@ -6,6 +6,8 @@
  */
 
 import { NotFoundError, ERROR_CODES } from "../../domain/errors/index.ts"
+import type { TelemetryReading } from "../../domain/entities/index.ts"
+import type { DataQuality, TelemetrySource } from "../../domain/value-objects/index.ts"
 import type { IngestionSummary } from "../../ingestion/ingestion.pipeline.ts"
 import type { ServiceContext } from "../context.ts"
 import type { MachineService } from "./machine.service.ts"
@@ -16,6 +18,64 @@ export interface TelemetryDependencies {
   scenarios: ScenarioService
   /** Passo de ingestao: fonte -> pipeline (o container monta as dependencias). */
   ingestStep: () => Promise<IngestionSummary | null>
+  /**
+   * Ingestao de leituras recebidas por HTTP/MQTT (D4/D19): mesmo
+   * IngestionService dos dois caminhos, so muda a origem.
+   */
+  pipeline: { ingest(readings: TelemetryReading[]): Promise<IngestionSummary> }
+}
+
+/** Leitura vinda da API/MQTT: o tenant NUNCA vem do payload (D3/D4). */
+interface IncomingReading {
+  machineId?: unknown
+  ts?: unknown
+  powerKw?: unknown
+  energyKwh?: unknown
+  voltageV?: unknown
+  currentA?: unknown
+  powerFactor?: unknown
+  temperatureC?: unknown
+  quality?: unknown
+  source?: unknown
+  sensorId?: unknown
+}
+
+const NUMERIC = new Set([
+  "powerKw",
+  "energyKwh",
+  "voltageV",
+  "currentA",
+  "powerFactor",
+  "temperatureC",
+])
+
+/**
+ * Normaliza o corpo de POST /api/telemetry no contrato de leitura.
+ * `source` default REAL: quem chama via HTTP e o gateway (D7).
+ */
+export function normalizeReading(input: IncomingReading): TelemetryReading {
+  const numbers: Record<string, number | null> = {}
+
+  for (const field of NUMERIC) {
+const raw = (input as Record<string, unknown>)[field]
+    numbers[field] = raw === undefined || raw === null || raw === "" ? null : Number(raw)
+  }
+
+  return {
+    machineId: String(input.machineId ?? ""),
+    ts: input.ts ? new Date(String(input.ts)) : new Date(),
+    powerKw: numbers.powerKw ?? 0,
+    energyKwh: numbers.energyKwh,
+    voltageV: numbers.voltageV,
+    currentA: numbers.currentA,
+    powerFactor: numbers.powerFactor,
+    temperatureC: numbers.temperatureC,
+    // `state` e DERIVADO pelo State Engine na ingestao; a fonte nao define.
+    state: "RUNNING",
+    quality: (input.quality as DataQuality) ?? "GOOD",
+    source: (input.source as TelemetrySource) ?? "REAL",
+    sensorId: input.sensorId ? String(input.sensorId) : null,
+  }
 }
 
 export function createTelemetryService(ctx: ServiceContext, deps: TelemetryDependencies) {
@@ -86,7 +146,39 @@ export function createTelemetryService(ctx: ServiceContext, deps: TelemetryDepen
     return summary
   }
 
-  return { machineTelemetry, machineAnalytics, tick }
+  /**
+   * Ingere leituras vindas de HTTP/MQTT pelo MESMO pipeline do simulador
+   * (D19). O tenant vem do contexto autenticado - o payload nao define.
+   */
+  async function ingest(input: unknown[]): Promise<IngestionSummary> {
+    const readings = (input ?? []).map((item) =>
+      normalizeReading((item ?? {}) as IncomingReading),
+    )
+
+    if (!readings.length) {
+      return {
+        received: 0,
+        persisted: 0,
+        duplicated: 0,
+        unresolved: 0,
+        invalid: 0,
+        missing: 0,
+        alertsOpened: 0,
+        states: {},
+      }
+    }
+
+    const summary = await deps.pipeline.ingest(readings)
+    log.info("Telemetria ingerida via API", {
+      received: summary.received,
+      persisted: summary.persisted,
+      duplicated: summary.duplicated,
+      unresolved: summary.unresolved,
+    })
+    return summary
+  }
+
+  return { machineTelemetry, machineAnalytics, tick, ingest }
 }
 
 export type TelemetryService = ReturnType<typeof createTelemetryService>

@@ -6,26 +6,34 @@
  * `database/repositories/memory` (fallback da demonstracao).
  */
 
-import type { DataQuality, MachineState, ScenarioId } from "../value-objects/index.ts"
+import type { DataQuality, MachineState, RelationshipType, ScenarioId, UserRole } from "../value-objects/index.ts"
 import type {
   Alert,
+  AuditLog,
   CompetitionInterventionRecord,
   CompetitionSnapshot,
   CompetitionTelemetryPoint,
   ConsumptionPoint,
   Gateway,
   GatewayHealth,
+  ImpactAnalysis,
   Intervention,
+  Invite,
+  MachineEvent,
   MachineRecord,
+  MachineRelationship,
   Plant,
   Protocol,
   ProtocolEvent,
   ReadingsCounters,
+  RefreshToken,
   SectorMeta,
   Shift,
   Tariff,
   TelemetryReading,
+  Tenant,
   Thresholds,
+  User,
 } from "../entities/index.ts"
 
 /** Linha generica das series de relatorio (read models). */
@@ -185,4 +193,90 @@ export interface IReportRepository {
   gateways(): Promise<Gateway[]>
   gatewayHealth(): Promise<GatewayHealth[]>
   nonMonitoredKwhDay(): Promise<number>
+}
+
+/* ------------------------------------------------------------------ */
+/* Multi-tenancy / autenticacao (secao 7)                             */
+/* ------------------------------------------------------------------ */
+
+export interface ITenantRepository {
+  list(): Promise<Tenant[]>
+  findById(id: string): Promise<Tenant | null>
+  findBySlug(slug: string): Promise<Tenant | null>
+  save(tenant: Tenant): Promise<Tenant>
+  update(id: string, patch: Partial<Tenant>): Promise<Tenant | null>
+}
+
+export interface IUserRepository {
+  list(tenantId: string): Promise<User[]>
+  findById(id: string, tenantId: string): Promise<User | null>
+  /** Busca global (login): e-mail unico entre tenants (D15). */
+  findByEmail(email: string): Promise<User | null>
+  countByRole(tenantId: string, role: UserRole): Promise<number>
+  save(user: User): Promise<User>
+  update(id: string, tenantId: string, patch: Partial<User>): Promise<User | null>
+}
+
+export interface IInviteRepository {
+  list(tenantId: string): Promise<Invite[]>
+  findById(id: string, tenantId: string): Promise<Invite | null>
+  /** Busca pelo hash do codigo (o codigo puro nunca e persistido). */
+  findByCodeHash(codeHash: string): Promise<Invite | null>
+  save(invite: Invite): Promise<Invite>
+  update(id: string, tenantId: string, patch: Partial<Invite>): Promise<Invite | null>
+}
+
+export interface IRefreshTokenRepository {
+  findByHash(tokenHash: string): Promise<RefreshToken | null>
+  save(token: RefreshToken): Promise<RefreshToken>
+  revoke(tokenHash: string, at: Date): Promise<boolean>
+  revokeAllForUser(userId: string, at: Date): Promise<number>
+}
+
+export interface IAuditLogRepository {
+  list(tenantId: string | null, limit?: number): Promise<AuditLog[]>
+  append(entry: AuditLog): Promise<AuditLog>
+}
+
+/* ------------------------------------------------------------------ */
+/* Eventos, relacoes e impacto (secao 11)                             */
+/* ------------------------------------------------------------------ */
+
+export interface MachineEventQuery {
+  machineId?: string
+  type?: string
+  severity?: string
+  limit?: number
+}
+
+export interface IMachineEventRepository {
+  list(tenantId: string, query?: MachineEventQuery): Promise<MachineEvent[]>
+  findById(id: string, tenantId: string): Promise<MachineEvent | null>
+  save(event: MachineEvent): Promise<MachineEvent>
+}
+
+export interface IRelationshipRepository {
+  list(tenantId: string): Promise<MachineRelationship[]>
+  findById(id: string, tenantId: string): Promise<MachineRelationship | null>
+  /** Verifica unicidade de (source, target, type) - D1. */
+  findUnique(
+    tenantId: string,
+    sourceMachineId: string,
+    targetMachineId: string,
+    relationshipType: RelationshipType,
+  ): Promise<MachineRelationship | null>
+  save(rel: MachineRelationship): Promise<MachineRelationship>
+  update(id: string, tenantId: string, patch: Partial<MachineRelationship>): Promise<MachineRelationship | null>
+  remove(id: string, tenantId: string): Promise<boolean>
+}
+
+export interface ImpactAnalysisQuery {
+  machineId?: string
+  limit?: number
+}
+
+export interface IImpactAnalysisRepository {
+  list(tenantId: string, query?: ImpactAnalysisQuery): Promise<ImpactAnalysis[]>
+  findById(id: string, tenantId: string): Promise<ImpactAnalysis | null>
+  save(analysis: ImpactAnalysis): Promise<ImpactAnalysis>
 }

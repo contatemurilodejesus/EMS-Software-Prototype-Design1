@@ -5,6 +5,7 @@
 import type { Alert, Intervention } from "../../../domain/entities/index.ts"
 import type { AlertQuery, IAlertRepository, IInterventionRepository } from "../../../domain/ports/index.ts"
 import { clone, formatDateTime } from "../../../shared/utils/index.ts"
+import { belongsToTenant, tenantFilter } from "./tenant-scope.ts"
 import type { MemoryStore } from "./memory-state.ts"
 
 export function createMemoryAlertRepository(store: MemoryStore): IAlertRepository {
@@ -12,7 +13,7 @@ export function createMemoryAlertRepository(store: MemoryStore): IAlertRepositor
 
   return {
     async list(query: AlertQuery = {}): Promise<Alert[]> {
-      let list = state.alerts.map(clone)
+      let list = tenantFilter(state.alerts).map(clone)
       if (query.severity && query.severity !== "all") {
         list = list.filter((a) => a.severity === query.severity)
       }
@@ -23,12 +24,12 @@ export function createMemoryAlertRepository(store: MemoryStore): IAlertRepositor
     },
 
     async findById(id: string): Promise<Alert | null> {
-      const found = state.alerts.find((a) => a.id === id)
+      const found = state.alerts.find((a) => a.id === id && belongsToTenant(a))
       return found ? clone(found) : null
     },
 
     async countOpen(): Promise<number> {
-      return state.alerts.filter((a) => a.status !== "resolved").length
+      return tenantFilter(state.alerts).filter((a) => a.status !== "resolved").length
     },
 
     async save(alert: Alert): Promise<Alert> {
@@ -37,7 +38,7 @@ export function createMemoryAlertRepository(store: MemoryStore): IAlertRepositor
     },
 
     async update(id: string, patch: Partial<Alert>): Promise<Alert | null> {
-      const index = state.alerts.findIndex((a) => a.id === id)
+      const index = state.alerts.findIndex((a) => a.id === id && belongsToTenant(a))
       if (index < 0) return null
       state.alerts[index] = { ...state.alerts[index], ...clone(patch), id }
       return clone(state.alerts[index])

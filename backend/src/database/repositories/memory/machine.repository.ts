@@ -14,25 +14,27 @@ import type {
   TelemetryQuery,
 } from "../../../domain/ports/index.ts"
 import { clone } from "../../../shared/utils/index.ts"
+import { belongsToTenant, tenantFilter } from "./tenant-scope.ts"
 import type { MemoryStore } from "./memory-state.ts"
 
 export function createMemoryMachineRepository(store: MemoryStore): IMachineRepository {
   const { state } = store
 
   return {
+    /** `tenantFilter` aplica o tenant do contexto autenticado (secao 7.1). */
     async list(query: MachineQuery = {}): Promise<MachineRecord[]> {
-      let list = state.machines.map(clone)
+      let list = tenantFilter(state.machines).map(clone)
       if (query.sector) list = list.filter((m) => m.sector === query.sector)
       return list
     },
 
     async findById(id: string): Promise<MachineRecord | null> {
-      const found = state.machines.find((m) => m.id === id)
+      const found = state.machines.find((m) => m.id === id && belongsToTenant(m))
       return found ? clone(found) : null
     },
 
     async count(): Promise<number> {
-      return state.machines.length
+      return tenantFilter(state.machines).length
     },
 
     async save(machine: MachineRecord): Promise<MachineRecord> {
@@ -41,7 +43,7 @@ export function createMemoryMachineRepository(store: MemoryStore): IMachineRepos
     },
 
     async update(id: string, patch: Partial<MachineRecord>): Promise<MachineRecord | null> {
-      const index = state.machines.findIndex((m) => m.id === id)
+      const index = state.machines.findIndex((m) => m.id === id && belongsToTenant(m))
       if (index < 0) return null
       const current = state.machines[index]
       state.machines[index] = { ...current, ...clone(patch), id: current.id }
@@ -49,7 +51,7 @@ export function createMemoryMachineRepository(store: MemoryStore): IMachineRepos
     },
 
     async remove(id: string): Promise<boolean> {
-      const index = state.machines.findIndex((m) => m.id === id)
+      const index = state.machines.findIndex((m) => m.id === id && belongsToTenant(m))
       if (index < 0) return false
       state.machines.splice(index, 1)
       return true
@@ -75,6 +77,11 @@ export function createMemoryTelemetryRepository(store: MemoryStore): ITelemetryR
     },
 
     async listByMachine(query: TelemetryQuery): Promise<TelemetryReading[]> {
+      // A maquina ja e filtrada por tenant em `machines.findById`; aqui o filtro
+      // garante que leituras de maquinas de outro tenant nunca saiam na API.
+      const machine = state.machines.find((m) => m.id === query.machineId)
+      if (!machine || !belongsToTenant(machine)) return []
+
       let list = state.telemetry
         .filter((r) => r.machineId === query.machineId)
         .slice()

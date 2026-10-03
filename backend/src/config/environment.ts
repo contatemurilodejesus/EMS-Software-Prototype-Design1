@@ -34,6 +34,31 @@ export interface Environment {
   readonly simulatorIntervalMs: number
   /** URL do frontend que consome esta API (apenas informativo no /health). */
   readonly frontendUrl: string
+  /** Auth (secao 7/15): segredos e expiracoes (P3/P4). */
+  readonly jwtAccessSecret: string
+  readonly jwtRefreshSecret: string
+  readonly jwtAccessTtlMinutes: number
+  readonly jwtRefreshTtlDays: number
+  readonly inviteTtlHours: number
+  /** Endpoints de demo (/api/demo/*) habilitados (D20). */
+  readonly demoMode: boolean
+  /** Limite de ausencia (min) para OFFLINE (P2 / D9). */
+  readonly offlineTimeoutMinutes: number
+  /** Janela minima (min) de IDLE a jusante para analise de impacto (P1 / D2). */
+  readonly impactMinWindowMinutes: number
+  /** Janelas "antes" e "depois" (horas) da comparacao (P5 e P6). */
+  readonly beforeWindowHours: number
+  readonly afterWindowHours: number
+  /** Credenciais do ADMIN de demonstracao - apenas no seed (secao 15). */
+  readonly seedAdminEmail: string
+  readonly seedAdminPassword: string
+  readonly seedAccountingEmail: string
+  readonly seedAccountingPassword: string
+  readonly seedEvaluatorEmail: string
+  readonly seedEvaluatorPassword: string
+  /** Tenant B do teste de isolamento (seed). */
+  readonly seedTenantBEmail: string
+  readonly seedTenantBPassword: string
 }
 
 const DEFAULT_DATABASE_URL =
@@ -94,6 +119,33 @@ export function buildEnvironment(env: Record<string, string | undefined> = {}): 
     live: readBool(env, "EMS_LIVE", true),
     simulatorIntervalMs: readNumber(env, "EMS_SIMULATOR_INTERVAL_MS", 5000),
     frontendUrl: readString(env, "VITE_EMS_API_URL", ""),
+    // Segredos: em producao SEM fallback (falha na partida); dev/demo usa default local.
+    jwtAccessSecret: readString(
+      env,
+      "JWT_ACCESS_SECRET",
+      nodeEnv === "production" ? "" : "energymatrix-dev-access-secret",
+    ),
+    jwtRefreshSecret: readString(
+      env,
+      "JWT_REFRESH_SECRET",
+      nodeEnv === "production" ? "" : "energymatrix-dev-refresh-secret",
+    ),
+    jwtAccessTtlMinutes: readNumber(env, "JWT_ACCESS_TTL_MIN", 15),
+    jwtRefreshTtlDays: readNumber(env, "JWT_REFRESH_TTL_DAYS", 7),
+    inviteTtlHours: readNumber(env, "INVITE_TTL_HOURS", 72),
+    demoMode: readBool(env, "DEMO_MODE", true),
+    offlineTimeoutMinutes: readNumber(env, "OFFLINE_TIMEOUT_MIN", 5),
+    impactMinWindowMinutes: readNumber(env, "IMPACT_MIN_WINDOW_MIN", 10),
+    beforeWindowHours: readNumber(env, "BEFORE_WINDOW_HOURS", 24),
+    afterWindowHours: readNumber(env, "AFTER_WINDOW_HOURS", 24),
+    seedAdminEmail: readString(env, "SEED_ADMIN_EMAIL", "admin@energymatrix.demo"),
+    seedAdminPassword: readString(env, "SEED_ADMIN_PASSWORD", "demo-admin-2026"),
+    seedAccountingEmail: readString(env, "SEED_ACCOUNTING_EMAIL", "financeiro@energymatrix.demo"),
+    seedAccountingPassword: readString(env, "SEED_ACCOUNTING_PASSWORD", "demo-contabil-2026"),
+    seedEvaluatorEmail: readString(env, "SEED_EVALUATOR_EMAIL", "avaliador@energymatrix.demo"),
+    seedEvaluatorPassword: readString(env, "SEED_EVALUATOR_PASSWORD", "demo-avaliador-2026"),
+    seedTenantBEmail: readString(env, "SEED_TENANT_B_EMAIL", "admin@empresa-b.demo"),
+    seedTenantBPassword: readString(env, "SEED_TENANT_B_PASSWORD", "demo-empresa-b-2026"),
   }
 }
 

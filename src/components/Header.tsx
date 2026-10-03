@@ -4,11 +4,30 @@ import { Logo } from "./Logo"
 
 export type Module = "fabrica" | "maquinas" | "alertas" | "protocolos" | "economia" | "competicao" | "relatorios" | "admin"
 
+/** Modulos acessiveis por role (D13) - o backend continua decidindo (RBAC). */
+export const ALLOWED_MODULES: Record<string, string[]> = {
+  fabrica: ["ADMIN", "ACCOUNTING", "MACHINE_EVALUATOR"],
+  maquinas: ["ADMIN", "MACHINE_EVALUATOR"],
+  alertas: ["ADMIN", "MACHINE_EVALUATOR"],
+  protocolos: ["ADMIN", "MACHINE_EVALUATOR"],
+  economia: ["ADMIN", "ACCOUNTING"],
+  competicao: ["ADMIN", "ACCOUNTING", "MACHINE_EVALUATOR"],
+  relatorios: ["ADMIN", "ACCOUNTING", "MACHINE_EVALUATOR"],
+  admin: ["ADMIN"],
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Administrador",
+  ACCOUNTING: "Financeiro",
+  MACHINE_EVALUATOR: "Avaliador",
+}
+
 interface HeaderProps {
   activeModule: Module
   onModuleChange: (m: Module) => void
-  alertCount: number
-  idleCount: number
+  /** Usuario autenticado (vem de /api/auth/me). */
+  user: { name: string; email: string; role: string }
+  onLogout: () => void
 }
 
 const units = [
@@ -56,11 +75,12 @@ const NAV: { id: Module; label: string; icon: string; demo?: boolean }[] = [
 export function Header({
   activeModule,
   onModuleChange,
-  alertCount,
-  idleCount,
+  user,
+  onLogout,
 }: HeaderProps) {
   const [unit, setUnit] = useState(units[0])
   const [unitOpen, setUnitOpen] = useState(false)
+  const [userOpen, setUserOpen] = useState(false)
 
   return (
     <header
@@ -139,45 +159,54 @@ export function Header({
             DEMO · dados simulados
           </span>
 
-          {/* Status pills */}
-          {idleCount > 0 && (
-            <button
-              onClick={() => onModuleChange("maquinas")}
-              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-300/30 text-amber-200 text-[11px] font-semibold"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              {idleCount} IDLE
-            </button>
-          )}
-          {alertCount > 0 && (
-            <button
-              onClick={() => onModuleChange("alertas")}
-              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-white text-[11px] font-semibold"
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path
-                  d="M5.5 1L0.5 10H10.5L5.5 1Z"
-                  stroke="white"
-                  strokeWidth="1.2"
-                  fill="none"
-                />
-                <path
-                  d="M5.5 4V6.5M5.5 8H5.51"
-                  stroke="white"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              {alertCount} alertas
-            </button>
-          )}
-
           {/* Backend / telemetria status */}
           <BackendStatus variant="light" />
 
-          {/* User */}
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[#BC0202] text-xs font-bold bg-white">
-            EM
+          {/* Usuario autenticado: nome, role e logout */}
+          <div className="relative">
+            <button
+              onClick={() => setUserOpen(!userOpen)}
+              className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              title={user.email}
+            >
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-[#BC0202] text-xs font-bold bg-white">
+                {user.name.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="hidden lg:flex flex-col items-start leading-none">
+                <span className="text-white text-[11px] font-semibold">
+                  {user.name}
+                </span>
+                <span className="text-white/60 text-[9px] uppercase tracking-wider">
+                  {ROLE_LABELS[user.role] ?? user.role}
+                </span>
+              </span>
+            </button>
+
+            {userOpen && (
+              <div className="absolute right-0 top-11 w-56 bg-white border border-gray-200 rounded shadow-lg overflow-hidden z-50">
+                <div className="px-3 py-2 border-b border-gray-100">
+                  <p className="text-[12px] font-semibold text-gray-800 truncate">
+                    {user.name}
+                  </p>
+                  <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                  <p className="text-[9px] uppercase tracking-wider text-gray-400 mt-1">
+                    {ROLE_LABELS[user.role] ?? user.role}
+                  </p>
+                </div>
+                <a
+                  href="/invite"
+                  className="block px-3 py-2 text-[11px] text-gray-700 hover:bg-gray-50"
+                >
+                  Ativar acesso por convite
+                </a>
+                <button
+                  onClick={onLogout}
+                  className="w-full text-left px-3 py-2 text-[11px] text-[#BC0202] hover:bg-red-50 border-t border-gray-100"
+                >
+                  Sair
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -188,24 +217,26 @@ export function Header({
         className="border-t border-white/10"
       >
         <div className="max-w-screen-2xl mx-auto px-5 flex items-center gap-0.5 overflow-x-auto">
-          {NAV.map(({ id, label, demo }) => (
-            <button
-              key={id}
-              onClick={() => onModuleChange(id)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-medium tracking-wide whitespace-nowrap transition-colors border-b-2 ${
-                activeModule === id
-                  ? "border-white text-white"
-                  : "border-transparent text-white/60 hover:text-white/90 hover:border-white/30"
-              }`}
-            >
-              {label}
-              {demo && (
-                <span className="px-1.5 py-px rounded bg-amber-300 text-[#7a1a00] text-[8px] font-bold tracking-wider">
-                  DEMO
-                </span>
-              )}
-            </button>
-          ))}
+          {NAV.filter(({ id }) => (ALLOWED_MODULES[id] ?? []).includes(user.role)).map(
+            ({ id, label, demo }) => (
+              <button
+                key={id}
+                onClick={() => onModuleChange(id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-medium tracking-wide whitespace-nowrap transition-colors border-b-2 ${
+                  activeModule === id
+                    ? "border-white text-white"
+                    : "border-transparent text-white/60 hover:text-white/90 hover:border-white/30"
+                }`}
+              >
+                {label}
+                {demo && (
+                  <span className="px-1.5 py-px rounded bg-amber-300 text-[#7a1a00] text-[8px] font-bold tracking-wider">
+                    DEMO
+                  </span>
+                )}
+              </button>
+            ),
+          )}
         </div>
       </div>
     </header>

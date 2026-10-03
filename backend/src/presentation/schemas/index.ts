@@ -107,3 +107,73 @@ export const telemetryQuerySchema = z.object({
 })
 
 export const emptySchema = z.object({}).partial().default({})
+
+/* ---------------- Autenticacao (secao 7) ---------------- */
+
+export const loginSchema = z.object({
+  email: z.string().min(3, "e-mail é obrigatório"),
+  password: z.string().min(1, "senha é obrigatória"),
+})
+
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(10, "refresh token é obrigatório"),
+})
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().optional(),
+})
+
+export const inviteCreateSchema = z.object({
+  email: z.string().min(3, "e-mail do convidado é obrigatório"),
+  name: z.string().optional(),
+  role: z.enum(["ADMIN", "ACCOUNTING", "MACHINE_EVALUATOR"]).default("MACHINE_EVALUATOR"),
+})
+
+export const inviteAcceptSchema = z.object({
+  code: z.string().min(8, "código de convite é obrigatório"),
+  name: z.string().min(2, "nome é obrigatório"),
+  email: z.string().optional(),
+  password: z.string().min(8, "a senha deve ter ao menos 8 caracteres"),
+})
+
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "informe a senha atual"),
+  newPassword: z.string().min(8, "a nova senha deve ter ao menos 8 caracteres"),
+})
+
+/* ---------------- Relacoes, eventos e impacto (secao 11) ---------------- */
+
+export const relationshipCreateSchema = z.object({
+  sourceMachineId: z.string().min(1, "sourceMachineId é obrigatório"),
+  targetMachineId: z.string().min(1, "targetMachineId é obrigatório"),
+  relationshipType: z
+    .enum(["SUPPLIES", "FEEDS", "DEPENDS_ON", "FOLLOWS", "COUPLED", "PARALLEL", "BACKUP"])
+    .default("SUPPLIES"),
+  dependencyLevel: z.coerce.number().int().min(1).max(3).optional(),
+  active: z.boolean().optional(),
+})
+
+export const relationshipUpdateSchema = relationshipCreateSchema.partial().omit({
+  sourceMachineId: true,
+  targetMachineId: true,
+})
+
+export const eventQuerySchema = z
+  .object({
+    machineId: z.string().optional(),
+    type: z.string().optional(),
+    severity: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(500).optional(),
+  })
+
+export const impactQuerySchema = z.object({
+  machineId: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
+})
+
+export const impactAnalyzeSchema = z.object({
+  machineId: z.string().min(1, "machineId é obrigatório"),
+  windowStart: z.string().optional(),
+  windowEnd: z.string().optional(),
+  downstreamPowerKw: z.record(z.string(), z.coerce.number()).optional(),
+})

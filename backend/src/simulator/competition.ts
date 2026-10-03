@@ -39,6 +39,7 @@ export const COMPETITION_SCENARIOS: readonly ScenarioId[] = [
   "THERMAL",
   "OFFLINE",
   "RECOVERY",
+  "CASCADE_IDLE",
 ]
 
 export interface ScenarioMeta {
@@ -54,6 +55,11 @@ export const SCENARIO_META: Readonly<Record<ScenarioId, ScenarioMeta>> = {
   THERMAL: { label: "Térmico", target: "M-002", note: "Temperatura acima do normal" },
   OFFLINE: { label: "Offline", target: "M-003", note: "Ausência de telemetria" },
   RECOVERY: { label: "Recuperação", target: "M-001", note: "Redução após intervenção" },
+  CASCADE_IDLE: {
+    label: "Cascata IDLE",
+    target: "M-001",
+    note: "M-001 STOPPED; M-002 e M-003 seguem em IDLE (possível desperdício)",
+  },
 }
 
 /** Perfis determinísticos das 3 maquinas (secao 14 do documento). */

@@ -17,19 +17,28 @@ import { createScheduler, type Scheduler } from "../infrastructure/scheduler.ts"
 import { createSimulatorSource } from "../infrastructure/sources/simulator.source.ts"
 import { createIngestionPipeline } from "../ingestion/ingestion.pipeline.ts"
 import { createMemoryRepositories } from "../database/repositories/memory/index.ts"
+import { createSeedUsers } from "../database/seeds/seed-data.ts"
 import {
   createAdminService,
   createAlertService,
+  createAuthService,
   createEconomyService,
+  createEventService,
   createHealthService,
   createMachineService,
+  createOfflineWatchdog,
   createProtocolService,
+  createRelationshipService,
   createScenarioService,
+  createSecurityService,
   createTelemetryService,
   type ApplicationServices,
+  type OfflineWatchdog,
 } from "../application/services/index.ts"
 import type { IngestionSummary } from "../ingestion/ingestion.pipeline.ts"
 import type { ServiceContext } from "../application/context.ts"
+import { TENANT_A_ID } from "../database/seeds/seed-data.ts"
+import { runWithActor } from "../shared/tenant-context.ts"
 import type { Logger } from "../domain/ports/index.ts"
 
 export interface Container {
@@ -37,6 +46,7 @@ export interface Container {
   logger: Logger
   services: ApplicationServices
   scheduler: Scheduler
+  watchdog: OfflineWatchdog
   /** Passo de telemetria (usado por POST /api/sim/tick e pelo agendador). */
   ingestStep: () => Promise<IngestionSummary | null>
   startedAt: Date
@@ -55,7 +65,24 @@ export async function createContainer(
   const clock = createSystemClock()
   const startedAt = clock.now()
 
-  const repos = createMemoryRepositories({ live: env.live, version: env.version })
+  // Usuarios do seed: as senhas vem do ambiente e sao HASHEADAS aqui
+  // (nenhuma senha real no Git - secao 6.3/15).
+  const seedUsers = createSeedUsers({
+    adminEmail: env.seedAdminEmail,
+    adminPassword: env.seedAdminPassword,
+    accountingEmail: env.seedAccountingEmail,
+    accountingPassword: env.seedAccountingPassword,
+    evaluatorEmail: env.seedEvaluatorEmail,
+    evaluatorPassword: env.seedEvaluatorPassword,
+    tenantBEmail: env.seedTenantBEmail,
+    tenantBPassword: env.seedTenantBPassword,
+  })
+
+  const repos = createMemoryRepositories({
+    live: env.live,
+    version: env.version,
+    seedUsers,
+  })
 
   if (env.persistence === "postgres") {
     logger.warn(
@@ -74,6 +101,13 @@ export async function createContainer(
     plants: repos.plants,
     reports: repos.reports,
     scenarios: repos.scenarios,
+    machineEvents: repos.machineEvents,
+    relationships: repos.relationships,
+    impactAnalyses: repos.impactAnalyses,
+    users: repos.users,
+    invites: repos.invites,
+    refreshTokens: repos.refreshTokens,
+    auditLogs: repos.auditLogs,
     unitOfWork: repos.unitOfWork,
     clock,
     logger,
@@ -99,9 +133,16 @@ export async function createContainer(
   async function ingestStep(): Promise<IngestionSummary | null> {
     tickCount += 1
     lastTick = clock.now()
-    const machines = await repos.machines.list({})
+    // Job: o passo do simulador roda com o tenant de demonstracao explicito
+    // (secao 7.1, item 5) - nunca com o tenant de um request.
+    const machines = await runWithActor(
+      { tenantId: TENANT_A_ID, userId: "system", role: "ADMIN" },
+      () => repos.machines.list({}),
+    )
     const readings = source.read(tickCount, machines)
-    return pipeline.ingest(readings)
+    return runWithActor({ tenantId: TENANT_A_ID, userId: "system", role: "ADMIN" }, () =>
+      pipeline.ingest(readings),
+    )
   }
 
   const scheduler = createScheduler({
@@ -114,6 +155,7 @@ export async function createContainer(
     machines: machineService,
     scenarios: scenarioService,
     ingestStep,
+    pipeline,
   })
 
   const healthService = createHealthService(
@@ -138,6 +180,33 @@ export async function createContainer(
     },
   )
 
+  const securityService = createSecurityService(ctx)
+
+  const authService = createAuthService(ctx, {
+    tenants: repos.tenants,
+    inviteTtlHours: env.inviteTtlHours,
+    jwtAccessSecret: env.jwtAccessSecret,
+    jwtRefreshSecret: env.jwtRefreshSecret,
+    accessTtlMinutes: env.jwtAccessTtlMinutes,
+    refreshTtlDays: env.jwtRefreshTtlDays,
+    onAudit: async (entry) => {
+      await securityService.record(entry)
+    },
+  })
+
+  const relationshipService = createRelationshipService(ctx)
+
+  const eventService = createEventService(ctx, {
+    relationships: relationshipService,
+    impactMinWindowMinutes: env.impactMinWindowMinutes,
+  })
+
+  const watchdog = createOfflineWatchdog(ctx, {
+    events: eventService,
+    offlineTimeoutMinutes: env.offlineTimeoutMinutes,
+    systemActor: { tenantId: TENANT_A_ID, userId: "system", role: "ADMIN" },
+  })
+
   const services: ApplicationServices = {
     machines: machineService,
     alerts: alertService,
@@ -147,6 +216,10 @@ export async function createContainer(
     admin: adminService,
     telemetry: telemetryService,
     health: healthService,
+    auth: authService,
+    security: securityService,
+    events: eventService,
+    relationships: relationshipService,
   }
 
   if (env.live) scheduler.start()
@@ -156,6 +229,7 @@ export async function createContainer(
     logger,
     services,
     scheduler,
+    watchdog,
     ingestStep,
     startedAt,
     ticks: () => tickCount,

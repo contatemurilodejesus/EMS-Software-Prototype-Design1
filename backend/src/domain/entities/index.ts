@@ -9,13 +9,21 @@ import type {
   AlertSeverity,
   AlertStatus,
   DataQuality,
+  EventSeverity,
+  ImpactClassification,
+  MachineEventType,
   MachineState,
   ProtocolEventType,
   ProtocolOrigin,
   ProtocolPriority,
   ProtocolStatus,
+  RelationshipType,
   ScenarioId,
   SlaState,
+  TelemetrySource,
+  TenantStatus,
+  UserRole,
+  UserStatus,
 } from "../value-objects/index.ts"
 
 export interface Plant {
@@ -65,6 +73,8 @@ export interface GatewayHealth {
 /** Linha persistida de `machines` (sem estado derivado). */
 export interface MachineRecord {
   id: string
+  /** Multi-tenancy: obrigatorio em todo dado da empresa (secao 7.1). */
+  tenantId?: string
   name: string
   type: string
   sector: string
@@ -85,6 +95,8 @@ export interface MachineRecord {
   lastUpdate: string
   quality?: DataQuality
   online?: boolean
+  /** Ultima telemetria nao-MISSING (alimenta o OfflineWatchdog, D9). */
+  lastMessageAt?: string | null
 }
 
 export interface Anomaly {
@@ -119,10 +131,15 @@ export interface TelemetryReading {
   temperatureC: number | null
   state: MachineState
   quality: DataQuality
+  /** D7: REAL ou SIMULATED - obrigatorio; simulador sempre SIMULATED. */
+  source: TelemetrySource
+  /** Opcional (D14): sensor que produziu a leitura. */
+  sensorId?: string | null
 }
 
 export interface Alert {
   id: string
+  tenantId?: string
   key?: string
   machine: string
   machineId: string
@@ -135,13 +152,23 @@ export interface Alert {
   status: AlertStatus
   action?: string
   message?: string
-  evidence?: string
+  /**
+   * Evidencia do alerta. O contrato legado do prototipo usa texto; as
+   * analises de impacto (D21) anexam evidencia estruturada (jsonb).
+   */
+  evidence?: string | Record<string, string | number>
   detectedAt: string
   auto?: boolean
   idleCost?: string
   acknowledgedAt?: string
   resolvedAt?: string
   assignee?: string
+  /** Rotulo de classificacao economica (OBSERVED/ESTIMATED/SIMULATED). */
+  classification?: ImpactClassification
+  /** Valor economico estimado associado ao alerta, quando houver. */
+  estimated?: boolean
+  avoidableKwh?: number
+  estimatedCost?: number
 }
 
 export interface Intervention {
@@ -205,6 +232,113 @@ export interface Tariff {
   contractedDemandKW: number
   excessDemandPenalty: number
   schedule?: TariffSchedule
+}
+
+/* ------------------------------------------------------------------ */
+/* Multi-tenancy e autenticacao (secao 7 do documento)                */
+/* ------------------------------------------------------------------ */
+
+export interface Tenant {
+  id: string
+  name: string
+  slug: string
+  status: TenantStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface User {
+  id: string
+  tenantId: string
+  name: string
+  email: string
+  passwordHash: string
+  role: UserRole
+  status: UserStatus
+  lastLoginAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Convite de uso unico: so o hash do codigo e guardado (7.2). */
+export interface Invite {
+  id: string
+  tenantId: string
+  role: UserRole
+  codeHash: string
+  expiresAt: string
+  usedAt?: string | null
+  createdBy: string
+  usedBy?: string | null
+}
+
+/** Refresh token: hash no banco, revogado no logout (D5). */
+export interface RefreshToken {
+  id: string
+  tenantId: string
+  userId: string
+  tokenHash: string
+  expiresAt: string
+  revokedAt?: string | null
+  ip?: string
+  userAgent?: string
+}
+
+/** Trilha de auditoria (7.5). Nunca guarda senhas ou tokens. */
+export interface AuditLog {
+  id: string
+  tenantId: string | null
+  userId: string | null
+  action: string
+  resource: string
+  resourceId?: string | null
+  metadata?: Record<string, unknown>
+  ip?: string
+  userAgent?: string
+  createdAt: string
+}
+
+/* ------------------------------------------------------------------ */
+/* Eventos, relacoes e impacto (secao 11 do documento)                */
+/* ------------------------------------------------------------------ */
+
+export interface MachineEvent {
+  id: string
+  tenantId: string
+  machineId: string
+  type: MachineEventType
+  severity: EventSeverity
+  timestamp: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface MachineRelationship {
+  id: string
+  tenantId: string
+  sourceMachineId: string
+  targetMachineId: string
+  relationshipType: RelationshipType
+  dependencyLevel: number
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/** Registro rastreavel da cascata (D21): janela, kWh, custo, evidencia. */
+export interface ImpactAnalysis {
+  id: string
+  tenantId: string
+  triggerEventId?: string | null
+  machineId: string
+  windowStart: string
+  windowEnd: string
+  avoidableKwh: number
+  estimatedCost: number
+  classification: ImpactClassification
+  evidence: Record<string, unknown>
+  alertId?: string | null
+  createdAt: string
 }
 
 export interface Thresholds {

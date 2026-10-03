@@ -14,12 +14,16 @@ import type {
   GatewayHealth,
   Intervention,
   MachineRecord,
+  MachineRelationship,
   Plant,
   Protocol,
   ReadingsCounters,
   SectorMeta,
   Shift,
+  Tenant,
+  User,
 } from "../../domain/entities/index.ts"
+import { hashPassword } from "../../shared/security/index.ts"
 
 /** plantas */
 export const PLANTS: Plant[] = [
@@ -955,3 +959,247 @@ export const PROTOCOLS: Protocol[] = [
 
 /** kWh/dia sem monitoramento (rotulado como estimativa). */
 export const NON_MONITORED_KWH_DAY: number = 580
+
+/* ------------------------------------------------------------------ */
+/* Multi-tenancy (secao 7) - UUIDs fixos para seed deterministico      */
+/* ------------------------------------------------------------------ */
+
+export const TENANT_A_ID = "3b6f5a10-0000-4000-8000-00000000000a"
+export const TENANT_B_ID = "3b6f5a10-0000-4000-8000-00000000000b"
+
+export const TENANTS: Tenant[] = [
+  {
+    id: TENANT_A_ID,
+    name: "EnergyMatrix Demo Ltda",
+    slug: "energymatrix-demo",
+    status: "active",
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+  {
+    id: TENANT_B_ID,
+    name: "Empresa B Indústria",
+    slug: "empresa-b",
+    status: "active",
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+]
+
+/**
+ * As 3 maquinas do Competition Mode (secao 10.2 do documento).
+ *
+ * Sao as MESMAS do simulador deterministico (`simulator/competition.ts`),
+ * porem persistidas no repositorio: assim as relacoes M-001 -> M-002 -> M-003
+ * apontam para maquinas reais e a analise de impacto / Machine Network
+ * funcionam sobre dados do banco, e nao sobre mocks.
+ *
+ * Valores: P_OFF / P_IDLE / P_RUN / baseline / temperatura - parametros de
+ * simulacao carregados pelo seed.
+ */
+export const DEMO_MACHINES: MachineRecord[] = [
+  {
+    "id": "M-001",
+    "name": "Compressor 01",
+    "type": "Compressor",
+    "sector": "Setor A",
+    "gateway": "GW-DEMO",
+    "nominalKW": 12,
+    "pOff": 0.2,
+    "pRun": 8,
+    "voltage": 380,
+    "current": 12.2,
+    "power": 6.4,
+    "consumption": 142.5,
+    "temperature": 43,
+    "powerFactor": 0.94,
+    "coverage": 100,
+    "baselineKw": 8,
+    "lastUpdate": "14:30",
+    "online": true,
+    "tenantId": TENANT_A_ID,
+  },
+  {
+    "id": "M-002",
+    "name": "Injetora 02",
+    "type": "Injetora",
+    "sector": "Setor A",
+    "gateway": "GW-DEMO",
+    "nominalKW": 15,
+    "pOff": 0.3,
+    "pRun": 12,
+    "voltage": 380,
+    "current": 18.9,
+    "power": 11.2,
+    "consumption": 198.7,
+    "temperature": 48,
+    "powerFactor": 0.93,
+    "coverage": 100,
+    "baselineKw": 10,
+    "lastUpdate": "14:30",
+    "online": true,
+    "tenantId": TENANT_A_ID,
+  },
+  {
+    "id": "M-003",
+    "name": "Prensa 03",
+    "type": "Prensa",
+    "sector": "Setor C",
+    "gateway": "GW-DEMO",
+    "nominalKW": 8,
+    "pOff": 0.2,
+    "pRun": 6,
+    "voltage": 380,
+    "current": 9.6,
+    "power": 4.8,
+    "consumption": 121.4,
+    "temperature": 41,
+    "powerFactor": 0.95,
+    "coverage": 100,
+    "baselineKw": 6,
+    "lastUpdate": "14:30",
+    "online": true,
+    "tenantId": TENANT_A_ID,
+  },
+]
+
+/**
+ * Maquina minima do Tenant B - existe apenas para provar o isolamento
+ * (secao 18.1: o Tenant A nao pode ve-la; o Tenant B nao ve as de A).
+ */
+export const TENANT_B_MACHINES: MachineRecord[] = [
+  {
+    id: "B-001",
+    name: "Prensa Empresa B",
+    type: "Prensa",
+    sector: "Setor B",
+    gateway: "GW-B01",
+    nominalKW: 20,
+    pOff: 1,
+    pRun: 10,
+    voltage: 380,
+    current: 25,
+    power: 12.5,
+    consumption: 130.2,
+    temperature: 55,
+    powerFactor: 0.93,
+    coverage: 100,
+    lastUpdate: "14:30",
+    tenantId: TENANT_B_ID,
+  },
+]
+
+/**
+ * Relacoes do seed (secao 10.2 / D1): M-001 -> M-002 -> M-003 do demo
+ * (cascata da figura 4) + cadeia real COMP -> INJ da fabrica.
+ * Ambas pertencem ao Tenant A.
+ */
+export const RELATIONSHIPS: MachineRelationship[] = [
+  {
+    id: "rel-0001",
+    tenantId: TENANT_A_ID,
+    sourceMachineId: "M-001",
+    targetMachineId: "M-002",
+    relationshipType: "SUPPLIES",
+    dependencyLevel: 1,
+    active: true,
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+  {
+    id: "rel-0002",
+    tenantId: TENANT_A_ID,
+    sourceMachineId: "M-002",
+    targetMachineId: "M-003",
+    relationshipType: "SUPPLIES",
+    dependencyLevel: 2,
+    active: true,
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+  {
+    id: "rel-0003",
+    tenantId: TENANT_A_ID,
+    sourceMachineId: "COMP-01",
+    targetMachineId: "INJ-01",
+    relationshipType: "SUPPLIES",
+    dependencyLevel: 1,
+    active: true,
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+  {
+    id: "rel-0004",
+    tenantId: TENANT_A_ID,
+    sourceMachineId: "COMP-01",
+    targetMachineId: "PRENSA-01",
+    relationshipType: "FEEDS",
+    dependencyLevel: 1,
+    active: true,
+    createdAt: "2026-10-03T08:00:00",
+    updatedAt: "2026-10-03T08:00:00",
+  },
+]
+
+export interface SeedUserCredentials {
+  adminEmail: string
+  adminPassword: string
+  accountingEmail: string
+  accountingPassword: string
+  evaluatorEmail: string
+  evaluatorPassword: string
+  tenantBEmail: string
+  tenantBPassword: string
+}
+
+/**
+ * Usuarios do seed - senhas HASHEADAS no momento do carregamento
+ * (credenciais vem do ambiente, secao 15; nada de senha real no Git).
+ */
+export function createSeedUsers(credentials: SeedUserCredentials): User[] {
+  const now = "2026-10-03T08:00:00"
+  const base = {
+    status: "active" as const,
+    lastLoginAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  return [
+    {
+      id: "usr-0000-0000-0000-000000000001",
+      tenantId: TENANT_A_ID,
+      name: "Administrador Demo",
+      email: credentials.adminEmail,
+      passwordHash: hashPassword(credentials.adminPassword),
+      role: "ADMIN",
+      ...base,
+    },
+    {
+      id: "usr-0000-0000-0000-000000000002",
+      tenantId: TENANT_A_ID,
+      name: "Financeiro Demo",
+      email: credentials.accountingEmail,
+      passwordHash: hashPassword(credentials.accountingPassword),
+      role: "ACCOUNTING",
+      ...base,
+    },
+    {
+      id: "usr-0000-0000-0000-000000000003",
+      tenantId: TENANT_A_ID,
+      name: "Avaliador Demo",
+      email: credentials.evaluatorEmail,
+      passwordHash: hashPassword(credentials.evaluatorPassword),
+      role: "MACHINE_EVALUATOR",
+      ...base,
+    },
+    {
+      id: "usr-0000-0000-0000-000000000004",
+      tenantId: TENANT_B_ID,
+      name: "Admin Empresa B",
+      email: credentials.tenantBEmail,
+      passwordHash: hashPassword(credentials.tenantBPassword),
+      role: "ADMIN",
+      ...base,
+    },
+  ]
+}

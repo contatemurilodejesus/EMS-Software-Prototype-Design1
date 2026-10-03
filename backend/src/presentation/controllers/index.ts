@@ -256,6 +256,122 @@ export function createControllers(services: ApplicationServices) {
     res.json(await services.health.health())
   })
 
+  /* ---------------- Autenticacao (secao 7.3) ---------------- */
+
+  const login = asyncHandler(async (req, res) => {
+    res.json(await services.auth.login(req.body as { email: string; password: string }))
+  })
+
+  const refresh = asyncHandler(async (req, res) => {
+    res.json(await services.auth.refresh(String(req.body.refreshToken ?? "")))
+  })
+
+  const logout = asyncHandler(async (req, res) => {
+    const body = (req.body ?? {}) as { refreshToken?: string }
+    res.json(await services.auth.logout(body.refreshToken))
+  })
+
+  const me = asyncHandler(async (_req, res) => {
+    res.json(await services.auth.me())
+  })
+
+  const changePassword = asyncHandler(async (req, res) => {
+    res.json(
+      await services.auth.changePassword(req.body as { currentPassword: string; newPassword: string }),
+    )
+  })
+
+  const createInvite = asyncHandler(async (req, res) => {
+    const created = await services.auth.createInvite(req.body as { email: string; role: string })
+    res.status(201).json(created)
+  })
+
+  const listInvites = asyncHandler(async (_req, res) => {
+    sendList(res, await services.auth.listInvites())
+  })
+
+  const acceptInvite = asyncHandler(async (req, res) => {
+    const body = req.body as { code: string; name: string; password: string }
+    res.status(201).json(await services.auth.acceptInvite(body))
+  })
+
+  const listUsers = asyncHandler(async (_req, res) => {
+    sendList(res, await services.auth.listUsers())
+  })
+
+  /* ---------------- Usuarios e seguranca (RBAC) ---------------- */
+
+  const securityOverview = asyncHandler(async (_req, res) => {
+    res.json(await services.security.overview())
+  })
+
+  const listAuditLogs = asyncHandler(async (_req, res) => {
+    sendList(res, await services.security.auditLogs())
+  })
+
+  const setUserRole = asyncHandler(async (req, res) => {
+    res.json(await services.security.setUserRole(req.params.id, String(req.body.role ?? "")))
+  })
+
+  const setUserStatus = asyncHandler(async (req, res) => {
+    res.json(await services.security.setUserStatus(req.params.id, String(req.body.status ?? "")))
+  })
+
+  /* ---------------- Relacoes entre maquinas (secao 11.2) ---------------- */
+
+  const listRelationships = asyncHandler(async (_req, res) => {
+    sendList(res, await services.relationships.list())
+  })
+
+  const createRelationship = asyncHandler(async (req, res) => {
+    res.status(201).json(await services.relationships.create(req.body))
+  })
+
+  const updateRelationship = asyncHandler(async (req, res) => {
+    res.json(await services.relationships.update(req.params.id, req.body))
+  })
+
+  const deleteRelationship = asyncHandler(async (req, res) => {
+    await services.relationships.remove(req.params.id)
+    res.status(204).end()
+  })
+
+  const machineNetwork = asyncHandler(async (_req, res) => {
+    res.json(await services.relationships.network())
+  })
+
+  const machineContext = asyncHandler(async (req, res) => {
+    res.json(await services.relationships.machineContext(req.params.id))
+  })
+
+  /* ---------------- Eventos e analise de impacto (secoes 11.1 e 11.3) ---------------- */
+
+  const listEvents = asyncHandler(async (req, res) => {
+    const query = req.query as { machineId?: string; type?: string; severity?: string; limit?: number }
+    sendList(res, await services.events.list(query))
+  })
+
+  const listImpacts = asyncHandler(async (req, res) => {
+    const query = req.query as { machineId?: string; limit?: number }
+    sendList(res, await services.events.listImpacts(query))
+  })
+
+  const analyzeImpact = asyncHandler(async (req, res) => {
+    res.status(201).json(await services.events.analyzeImpact(req.body))
+  })
+
+  const getImpact = asyncHandler(async (req, res) => {
+    res.json(await services.events.findImpact(req.params.id))
+  })
+
+  /* ---------------- Telemetria persistente (POST /api/telemetry, D4) ---------------- */
+
+  const ingestTelemetry = asyncHandler(async (req, res) => {
+    const body = req.body as { readings?: unknown } | unknown[]
+    const readings = Array.isArray(body) ? body : ((body as { readings?: unknown[] })?.readings ?? [])
+    res.status(202).json(await services.telemetry.ingest(readings))
+  })
+
   return {
     health,
     live,
@@ -304,6 +420,30 @@ export function createControllers(services: ApplicationServices) {
     patchThresholds,
     toggleShift,
     simTick,
+    login,
+    refresh,
+    logout,
+    me,
+    changePassword,
+    createInvite,
+    listInvites,
+    acceptInvite,
+    listUsers,
+    securityOverview,
+    listAuditLogs,
+    setUserRole,
+    setUserStatus,
+    listRelationships,
+    createRelationship,
+    updateRelationship,
+    deleteRelationship,
+    machineNetwork,
+    machineContext,
+    listEvents,
+    listImpacts,
+    analyzeImpact,
+    getImpact,
+    ingestTelemetry,
   }
 }
 

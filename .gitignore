@@ -2,7 +2,11 @@ node_modules/
 dist/
 build/
 .cache/
-.env*
+# Segredos NUNCA no Git. O .env.example e a documentacao das variaveis, e
+# por isso continua versionado (secao 15 do documento tecnico).
+.env
+.env.*
+!.env.example
 .vite/
 vite.config.*.timestamp-*
 *.tsbuildinfo
@@ -19,3 +23,9 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Logs do dev server iniciado manualmente (npm run dev com redirect).
+devserver.log
+devserver.err
+d3.err
+v.err

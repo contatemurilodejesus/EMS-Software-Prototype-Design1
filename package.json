@@ -7,8 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server/index.mjs",
-    "smoke": "node server/smoke.mjs"
+    "server": "node backend/src/server/index.ts",
+    "test": "node --test \"backend/tests/*.test.ts\"",
+    "test:api": "node --test backend/tests/api.test.ts",
+    "proof:rls": "node backend/proof/rls.proof.ts",
+    "verify:frontend": "node scripts/verify-frontend-api.mjs",
+    "db:migrate": "node backend/src/database/postgres/migrate.ts",
+    "db:seed": "node backend/src/database/postgres/seed.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p backend"
   },
   "dependencies": {
     "express": "^5.2.1",

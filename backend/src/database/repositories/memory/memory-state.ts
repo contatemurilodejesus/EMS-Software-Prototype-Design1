@@ -12,19 +12,27 @@
 
 import type {
   Alert,
+  AuditLog,
   ConsumptionPoint,
   Gateway,
   GatewayHealth,
+  ImpactAnalysis,
   Intervention,
+  Invite,
+  MachineEvent,
   MachineRecord,
+  MachineRelationship,
   Plant,
   Protocol,
   ReadingsCounters,
+  RefreshToken,
   SectorMeta,
   Shift,
   Tariff,
   TelemetryReading,
+  Tenant,
   Thresholds,
+  User,
 } from "../../../domain/entities/index.ts"
 import type { MachineStateInterval } from "../../../domain/ports/index.ts"
 import { DEFAULT_TARIFF } from "../../../analytics/cost.ts"
@@ -43,6 +51,15 @@ export interface MemoryState {
   version: string
   startedAtMs: number
   live: boolean
+  /** Multi-tenancy (secao 7): dados de autenticacao e da empresa. */
+  tenants: Tenant[]
+  users: User[]
+  invites: Invite[]
+  refreshTokens: RefreshToken[]
+  auditLogs: AuditLog[]
+  machineEvents: MachineEvent[]
+  relationships: MachineRelationship[]
+  impactAnalyses: ImpactAnalysis[]
   plants: Plant[]
   sectorMeta: SectorMeta[]
   machines: MachineRecord[]
@@ -68,6 +85,8 @@ export interface MemoryState {
   lastTickAtMs: number
   alertSeq: number
   protocolSeq: number
+  eventSeq: number
+  auditSeq: number
   simulator: CompetitionSimulator
 }
 
@@ -76,6 +95,11 @@ export interface CreateMemoryStateOptions {
   tariff?: Tariff
   version?: string
   startedAtMs?: number
+  /**
+   * Usuarios do seed (hash de senhas a partir das credenciais do ambiente).
+   * O container monta a lista com `createSeedUsers(env)`.
+   */
+  seedUsers?: User[]
 }
 
 export function createMemoryState(options: CreateMemoryStateOptions = {}) {
@@ -83,6 +107,14 @@ export function createMemoryState(options: CreateMemoryStateOptions = {}) {
     version: options.version ?? "2.0.0",
     startedAtMs: options.startedAtMs ?? 0,
     live: options.live !== false,
+    tenants: [],
+    users: [],
+    invites: [],
+    refreshTokens: [],
+    auditLogs: [],
+    machineEvents: [],
+    relationships: [],
+    impactAnalyses: [],
     plants: [],
     sectorMeta: [],
     machines: [],
@@ -108,15 +140,32 @@ export function createMemoryState(options: CreateMemoryStateOptions = {}) {
     lastTickAtMs: options.startedAtMs ?? 0,
     alertSeq: 42,
     protocolSeq: 0,
+    eventSeq: 0,
+    auditSeq: 0,
     simulator: createCompetitionSimulator({ tariff: options.tariff ?? DEFAULT_TARIFF }),
   }
 
   /** Restaura o estado dos seeds (equivale ao `reset` do demo). */
   function reset(): void {
+    state.tenants = clone(seed.TENANTS)
+    state.users = options.seedUsers ? clone(options.seedUsers) : []
+    state.invites = []
+    state.refreshTokens = []
+    state.auditLogs = []
+    state.machineEvents = []
+    state.relationships = clone(seed.RELATIONSHIPS)
+    state.impactAnalyses = []
     state.plants = clone(seed.PLANTS)
     state.sectorMeta = clone(seed.SECTOR_META)
-    state.machines = clone(seed.MACHINES)
-    state.alerts = clone(seed.ALERTS)
+    // Todo dado de demonstracao pertence ao Tenant A; o Tenant B tem a sua
+    // propria maquina minima (teste de isolamento, secao 18.1).
+    state.machines = [
+      ...clone(seed.MACHINES).map((m) => ({ ...m, tenantId: seed.TENANT_A_ID })),
+      // As 3 maquinas do Competition Mode (secao 10.2) - M-001 -> M-002 -> M-003.
+      ...clone(seed.DEMO_MACHINES),
+      ...clone(seed.TENANT_B_MACHINES),
+    ]
+    state.alerts = clone(seed.ALERTS).map((a) => ({ ...a, tenantId: seed.TENANT_A_ID }))
     state.interventions = clone(seed.INTERVENTIONS)
     state.protocols = clone(seed.PROTOCOLS)
     state.shifts = clone(seed.SHIFTS)
@@ -138,6 +187,8 @@ export function createMemoryState(options: CreateMemoryStateOptions = {}) {
     state.lastTickAtMs = 0
     state.alertSeq = 42
     state.protocolSeq = 0
+    state.eventSeq = 0
+    state.auditSeq = 0
     state.simulator.reset("NORMAL")
   }
 

@@ -1,0 +1,51 @@
+name: energymatrix
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL + TimescaleDB (Fase 2)
+  #
+  # TimescaleDB exige shared_preload_libraries, por isso a imagem timescale
+  # (o postgres puro e as versoes mais recentes suportam sem preload). O
+  # `energymatrix_test` vive no MESMO servidor, separado de `energymatrix`.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: energymatrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: energymatrix
+      POSTGRES_PASSWORD: energymatrix
+      POSTGRES_DB: energymatrix
+      # Banco de teste separado (section 8 / 6.3).
+      EMS_TEST_DB: energymatrix_test
+    ports:
+      # Porta do HOST e 5433 para nao colidir com outros bancos locais.
+      # A rede interna do compose continua usando 5432.
+      - "${EMS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Cria o banco de teste no 1o start e sobe quando os dois bancos existem.
+      # Fica no healthcheck (e nao em docker-entrypoint-initdb.d) porque o
+      # volume anonimo declarado pela imagem mascara o bind-mount do script.
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U energymatrix -d energymatrix &&
+          psql -U energymatrix -d postgres -tAc
+          "SELECT 1 FROM pg_database WHERE datname='energymatrix_test'" | grep -q 1 ||
+          psql -U energymatrix -d postgres -c "CREATE DATABASE energymatrix_test"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 25s
+    networks:
+      - ems
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  ems:
+    driver: bridge

@@ -1,20 +1,23 @@
+import type { Plugin } from "vite"
+
 export interface EmsApiPluginOptions {
-  /** Habilita a simulação de telemetria (default: true). */
+  /**
+   * Sobreposicoes do ambiente do backend (persistence, live, logLevel...).
+   * Sem isso, vale o que vier de `.env` e dos padroes de `config/environment.ts`.
+   */
+  env?: Record<string, string>
 
-  live?: boolean
-
-  /** Intervalo (ms) entre passos de telemetria simulada (default: 5000). */
-
-  tickIntervalMs?: number
+  /** Prefixo da API montada no dev/preview server (default: `/api`). */
+  apiPrefix?: string
 }
 
 /**
- * Plugin Vite que expõe o backend EnergyMatrix EMS em `/api/*` no próprio
- * dev/preview server do Vite.
+ * Plugin Vite que expoe o backend Express OFICIAL do EnergyMatrix em `/api/*`
+ * durante `vite dev` e `vite preview`.
+ *
+ * Nao contem regra de negocio e nao duplica rotas: encaminha ao mesmo Express
+ * usado em producao, por um socket local efemero.
  */
-
-export function emsApiPlugin(
-  options?: EmsApiPluginOptions,
-): import("vite").Plugin
+export function emsApiPlugin(options?: EmsApiPluginOptions): Plugin
 
 export default emsApiPlugin

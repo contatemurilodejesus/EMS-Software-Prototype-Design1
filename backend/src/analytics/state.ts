@@ -9,7 +9,7 @@
  */
 
 import type { Anomaly, MachineSignal, Thresholds } from "../domain/entities/index.ts"
-import type { MachineState } from "../domain/value-objects/index.ts"
+import type { EnergyState, MachineState } from "../domain/value-objects/index.ts"
 import { toNumber } from "../shared/utils/index.ts"
 import { DEFAULT_THRESHOLDS, detectAnomalies } from "./anomaly.ts"
 
@@ -26,9 +26,9 @@ export interface StateEngineOptions {
 }
 
 /** Classificacao instantanea a partir da potencia ativa (kW). */
-export function classifyState(power: number, pOff: number, pRun: number): MachineState {
+export function classifyState(power: number, pOff: number, pRun: number): EnergyState {
   const p = toNumber(power)
-  if (p <= toNumber(pOff)) return "OFF"
+  if (p <= toNumber(pOff)) return "STOPPED"
   if (p < toNumber(pRun)) return "IDLE"
   return "RUNNING"
 }
@@ -41,20 +41,26 @@ export function classifyStateWithHysteresis(
   power: number,
   pOff: number,
   pRun: number,
-  previous: MachineState | undefined,
+  previous: EnergyState | MachineState | undefined,
   hysteresisKw = DEFAULT_HYSTERESIS_KW,
-): MachineState {
+): EnergyState {
   const raw = classifyState(power, pOff, pRun)
-  if (!previous || raw === previous) return raw
+  // Sobreposicoes (ANOMALY/OFFLINE/MAINTENANCE) nao participam da banda:
+  // a comparacao usa apenas o estado de energia subjacente.
+  const prevEnergy =
+    previous === "ANOMALY" || previous === "OFFLINE" || previous === "MAINTENANCE"
+      ? undefined
+      : previous
+  if (!prevEnergy || raw === prevEnergy) return raw
 
   const p = toNumber(power)
   const off = toNumber(pOff)
   const run = toNumber(pRun)
 
-  if (previous === "OFF" && raw === "IDLE" && p < off + hysteresisKw) return "OFF"
-  if (previous === "IDLE" && raw === "OFF" && p > off - hysteresisKw) return "IDLE"
-  if (previous === "RUNNING" && raw === "IDLE" && p > run - hysteresisKw) return "RUNNING"
-  if (previous === "IDLE" && raw === "RUNNING" && p < run + hysteresisKw) return "IDLE"
+  if (prevEnergy === "STOPPED" && raw === "IDLE" && p < off + hysteresisKw) return "STOPPED"
+  if (prevEnergy === "IDLE" && raw === "STOPPED" && p > off - hysteresisKw) return "IDLE"
+  if (prevEnergy === "RUNNING" && raw === "IDLE" && p > run - hysteresisKw) return "RUNNING"
+  if (prevEnergy === "IDLE" && raw === "RUNNING" && p < run + hysteresisKw) return "IDLE"
   return raw
 }
 

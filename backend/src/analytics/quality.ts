@@ -18,6 +18,7 @@ export interface QualitySlice {
 const COLORS: Readonly<Record<DataQuality, string>> = {
   GOOD: "#16A34A",
   MISSING: "#9CA3AF",
+  ESTIMATED: "#2563EB",
   OUTLIER: "#D97706",
   DUPLICATE: "#BC0202",
 }

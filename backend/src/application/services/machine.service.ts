@@ -12,6 +12,7 @@ import { aggregateSectors } from "../../analytics/sectors.ts"
 import { describeAnomalies, resolveState } from "../../analytics/state.ts"
 import { dnoise, hashId } from "../../shared/utils/deterministic.ts"
 import { clone, formatDateTime, formatTime, toNumber } from "../../shared/utils/index.ts"
+import { currentTenantId } from "../../shared/tenant-context.ts"
 import {
   ConflictError,
   ERROR_CODES,
@@ -138,6 +139,9 @@ export function createMachineService(ctx: ServiceContext) {
 
     const record: MachineRecord = {
       id,
+      // `tenantId` vem SEMPRE do contexto autenticado (secao 7.1.1) - nunca
+      // do corpo da requisicao.
+      tenantId: currentTenantId(),
       name: String(input.name ?? id),
       type: String(input.type ?? "Geral"),
       sector: String(input.sector ?? "Setor A"),
@@ -218,7 +222,7 @@ export function createMachineService(ctx: ServiceContext) {
       idleMachines: machines.filter((m) => m.state === "IDLE").length,
       running: machines.filter((m) => m.state === "RUNNING").length,
       anomaly: machines.filter((m) => m.state === "ANOMALY").length,
-      off: machines.filter((m) => m.state === "OFF").length,
+      off: machines.filter((m) => m.state === "STOPPED" || m.state === "OFFLINE").length,
       alerts: alerts.length,
     }
 

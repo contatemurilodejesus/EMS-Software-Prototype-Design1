@@ -18,5 +18,15 @@
     "pnpm-lock.yaml"
   ],
   // Files whose changes trigger only a dev server restart (no install).
-  "restartOn": []
+  //
+  // O backend faz parte do dev server: `server/vite-plugin.mjs` monta o Express
+  // em memoria e encaminha /api. Alterar rota, schema, repository ou seed exige
+  // reiniciar o processo para que o container novo seja montado.
+  "restartOn": [
+    "backend/src/**/*.ts",
+    "server/vite-plugin.mjs",
+    "vite.config.ts",
+    ".env",
+    ".env.development"
+  ]
 }

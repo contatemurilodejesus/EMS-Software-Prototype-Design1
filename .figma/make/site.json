@@ -1,6 +1,6 @@
 {
-  "title": "EnergyMatrix EMS Industrial — Protótipo de decisão energética",
-  "description": "Monitor and analyze industrial energy consumption with real-time data, alerts, and maintenance insights to optimize efficiency and reduce costs.",
+  "title": "EnergyMatrix EMS Industrial — Monitoramento e análise de energia",
+  "description": "EMS industrial multi-tenant: medição, análise de consumo, alertas, impacto financeiro em cascata e intervenções. Dados persistidos em PostgreSQL/TimescaleDB.",
   "language": "pt-BR",
   "icons": {
     "icon": "/favicon.jpeg"

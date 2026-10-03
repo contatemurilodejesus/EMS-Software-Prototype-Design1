@@ -10,6 +10,7 @@ import {
   ReferenceLine,
 } from "recharts"
 import { useApiResource } from "../lib/api"
+import { DataSourceBadge } from "./DataSourceBadge"
 import type { Summary } from "../lib/types"
 
 /** Fallbacks locais — usados quando o backend está indisponível. */
@@ -190,7 +191,7 @@ export function Dashboard() {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h")
 
   // KPIs, setores, curva de consumo, qualidade e gateways vêm do backend (/api/summary).
-  const { data: summary, live } = useApiResource<Summary>(
+  const { data: summary, live, loading, error } = useApiResource<Summary>(
     "/api/summary",
     FALLBACK_SUMMARY,
     { pollMs: 10000 },
@@ -210,6 +211,12 @@ export function Dashboard() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-5 py-5 space-y-5">
+      <DataSourceBadge
+        live={live}
+        loading={loading}
+        error={error}
+        label="Visão da Fábrica"
+      />
       {/* Title */}
       <div className="flex items-center justify-between">
         <div>

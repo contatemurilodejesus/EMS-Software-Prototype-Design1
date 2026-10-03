@@ -7,19 +7,39 @@
 
 import type {
   IAlertRepository,
+  IAuditLogRepository,
   IConfigRepository,
+  IImpactAnalysisRepository,
   IInterventionRepository,
+  IInviteRepository,
+  IMachineEventRepository,
   IMachineRepository,
   IMachineStateRepository,
   IPlantRepository,
   IProtocolRepository,
+  IRefreshTokenRepository,
+  IRelationshipRepository,
   IReportRepository,
   IScenarioRepository,
   ITelemetryRepository,
+  ITenantRepository,
+  IUserRepository,
   UnitOfWork,
 } from "../../../domain/ports/index.ts"
 import { createMemoryAlertRepository, createMemoryInterventionRepository } from "./alert.repository.ts"
+import {
+  createMemoryAuditLogRepository,
+  createMemoryInviteRepository,
+  createMemoryRefreshTokenRepository,
+  createMemoryTenantRepository,
+  createMemoryUserRepository,
+} from "./auth.repository.ts"
 import { createMemoryConfigRepository, createMemoryPlantRepository } from "./config.repository.ts"
+import {
+  createMemoryImpactAnalysisRepository,
+  createMemoryMachineEventRepository,
+  createMemoryRelationshipRepository,
+} from "./graph.repository.ts"
 import { createMemoryMachineStateRepository } from "./machine-state.repository.ts"
 import {
   createMemoryMachineRepository,
@@ -42,6 +62,16 @@ export interface MemoryRepositories {
   plants: IPlantRepository
   reports: IReportRepository
   scenarios: IScenarioRepository
+  /** Multi-tenancy e autenticacao (secao 7). */
+  tenants: ITenantRepository
+  users: IUserRepository
+  invites: IInviteRepository
+  refreshTokens: IRefreshTokenRepository
+  auditLogs: IAuditLogRepository
+  /** Eventos, relacoes e impacto (secao 11). */
+  machineEvents: IMachineEventRepository
+  relationships: IRelationshipRepository
+  impactAnalyses: IImpactAnalysisRepository
   unitOfWork: UnitOfWork
 }
 
@@ -60,6 +90,14 @@ export function createMemoryRepositories(options: CreateMemoryStateOptions = {})
     plants: createMemoryPlantRepository(store),
     reports: createMemoryReportRepository(store),
     scenarios: createMemoryScenarioRepository(store),
+    tenants: createMemoryTenantRepository(store),
+    users: createMemoryUserRepository(store),
+    invites: createMemoryInviteRepository(store),
+    refreshTokens: createMemoryRefreshTokenRepository(store),
+    auditLogs: createMemoryAuditLogRepository(store),
+    machineEvents: createMemoryMachineEventRepository(store),
+    relationships: createMemoryRelationshipRepository(store),
+    impactAnalyses: createMemoryImpactAnalysisRepository(store),
     /**
      * Adaptador em memoria nao possui transacao real. A unidade de trabalho
      * existe para que os services nao dependam de `pg`: no modo PostgreSQL ela
