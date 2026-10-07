@@ -33,6 +33,14 @@ export function createControllers(services: ApplicationServices) {
     res.json(services.health.live())
   })
 
+  const database = asyncHandler(async (_req, res) => {
+    res.json(await services.health.database())
+  })
+
+  const mqtt = asyncHandler(async (_req, res) => {
+    res.json(await services.health.mqtt())
+  })
+
   const ready = asyncHandler(async (_req, res) => {
     const body = await services.health.ready()
     res.status(body.status === "ready" ? 200 : 503).json(body)
@@ -376,6 +384,8 @@ export function createControllers(services: ApplicationServices) {
     health,
     live,
     ready,
+    database,
+    mqtt,
     summary,
     sectors,
     plants,

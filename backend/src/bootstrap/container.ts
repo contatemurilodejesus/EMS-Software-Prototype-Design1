@@ -11,13 +11,15 @@
  */
 
 import { getEnvironment, type Environment } from "../config/environment.ts"
+import { createDatabase, type DatabasePort } from "../database/postgres/pool.ts"
 import { createLogger, toLoggerPort } from "../infrastructure/logger.ts"
 import { createSystemClock } from "../infrastructure/clock.ts"
 import { createScheduler, type Scheduler } from "../infrastructure/scheduler.ts"
 import { createSimulatorSource } from "../infrastructure/sources/simulator.source.ts"
 import { createIngestionPipeline } from "../ingestion/ingestion.pipeline.ts"
-import { createMemoryRepositories } from "../database/repositories/memory/index.ts"
+import { createMemoryRepositories, type MemoryRepositories } from "../database/repositories/memory/index.ts"
 import { createSeedUsers } from "../database/seeds/seed-data.ts"
+import { createPostgresRepositories, type PostgresRepositories } from "../database/postgres/repositories/index.ts"
 import {
   createAdminService,
   createAlertService,
@@ -40,6 +42,8 @@ import type { ServiceContext } from "../application/context.ts"
 import { TENANT_A_ID } from "../database/seeds/seed-data.ts"
 import { runWithActor } from "../shared/tenant-context.ts"
 import type { Logger } from "../domain/ports/index.ts"
+import { createCompetitionSimulator, type CompetitionSimulator } from "../simulator/competition.ts"
+import { DEFAULT_TARIFF } from "../analytics/index.ts"
 
 export interface Container {
   env: Environment
@@ -78,16 +82,31 @@ export async function createContainer(
     tenantBPassword: env.seedTenantBPassword,
   })
 
-  const repos = createMemoryRepositories({
-    live: env.live,
-    version: env.version,
-    seedUsers,
-  })
+  let repos: MemoryRepositories | PostgresRepositories;
+  let simulator: CompetitionSimulator | undefined;
+  let pool: DatabasePort | undefined;
 
   if (env.persistence === "postgres") {
-    logger.warn(
-      "EMS_PERSISTENCE=postgres: adaptadores PostgreSQL sao montados pelo modulo database/repositories/postgres (ver docs/database.md). Nesta execucao foi usado o adaptador em memoria.",
-    )
+    const connectionString = process.env.DATABASE_URL ?? env.databaseUrl;
+    if (!connectionString) {
+      throw new Error("EMS_PERSISTENCE=postgres requer DATABASE_URL (ou conexao no compose).");
+    }
+    // Sem fallback silencioso: o banco deve estar acessivel antes de subir.
+    const db = createDatabase({ connectionString, resolveTenant: () => null });
+    const deadline = Date.now() + (env.databaseConnectTimeoutMs ?? 30_000);
+    while (!(await db.healthCheck())) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Banco PostgreSQL indisponivel apos 30s (EMS_PERSISTENCE=postgres). Verifique DATABASE_URL.`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    pool = db;
+    simulator = createCompetitionSimulator({ tariff: DEFAULT_TARIFF });
+    repos = createPostgresRepositories(db, simulator) as PostgresRepositories;
+  } else {
+    repos = createMemoryRepositories({ live: env.live, version: env.version, seedUsers });
   }
 
   const ctx: ServiceContext = {
@@ -175,7 +194,10 @@ export async function createContainer(
        * sempre ok. Com PostgreSQL, `PostgresRepositories.healthCheck()` executa
        * `SELECT 1` no pool.
        */
-      databaseReady: async () => true,
+      databaseReady: async () => {
+        if (pool) return pool.healthCheck();
+        return true;
+      },
       persistence: env.persistence,
     },
   )

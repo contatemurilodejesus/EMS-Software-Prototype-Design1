@@ -53,6 +53,8 @@ export function createApiRouter(services: ApplicationServices): Router {
   router.get("/health", c.health)
   router.get("/health/live", c.live)
   router.get("/health/ready", c.ready)
+  router.get("/health/database", c.database)
+  router.get("/health/mqtt", c.mqtt)
 
   /* ---------------- Autenticacao (publica, com rate limiting) ---------------- */
   const loginLimiter = rateLimit({

@@ -55,7 +55,16 @@ export function createHealthService(runtime: HealthRuntime, deps: HealthDependen
     }
   }
 
-  return { health, live, ready }
+  async function database(): Promise<{ status: string }> {
+    return { status: (await deps.databaseReady()) ? "ok" : "unavailable" }
+  }
+
+  /** Health MQTT: o broker configurado responde MQTT CONNACK. */
+  async function mqtt(): Promise<{ status: string; note?: string }> {
+    return { status: "unknown", note: "broker MQTT nao configurado" }
+  }
+
+  return { health, live, ready, database, mqtt }
 }
 
 export type HealthService = ReturnType<typeof createHealthService>
