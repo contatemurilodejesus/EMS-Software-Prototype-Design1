@@ -1,0 +1,2 @@
+﻿server/vite-plugin.d.mts
+server/vite-plugin.mjs

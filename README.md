@@ -44,11 +44,24 @@ VITE_EMS_API_URL=http://localhost:8787 npm run dev
 ### Testes
 
 ```bash
-node --test backend/tests/api.test.ts   # 43 testes: API real, RBAC e isolamento
-npm run smoke                          # 32 verificações do Competition Mode
-npx tsc --noEmit -p backend            # tipagem do backend
+npm test        # 55 testes: API real, RBAC, isolamento A/B, rate limit, telemetria e fluxo completo (api.test.ts, flow.test.ts, mqtt.test.ts)
+npm test        # 55 testes: API real, RBAC, isolamento A/B, rate limit, telemetria e fluxo completo (api.test.ts, flow.test.ts, mqtt.test.ts)
+# npm run smoke -- (competicao mode: 32 verificacoes antigas, mantem-se como validacao)
 npx tsc --noEmit                       # tipagem do frontend
+npx tsc --noEmit -p backend            # tipagem do backend
 ```
+
+Documentacao de producao:
+
+| Documento | O que contem |
+| --- | --- |
+| `docs/architecture.md` | camadas, isolamento, decisoes de evolucao |
+| `docs/backend.md` | API, autenticacao, rate limit e regras |
+| `docs/database.md` | modelo, migrations, RLS e papéis (`energymatrix_app`) |
+| `docs/security.md` | login+RLS (SECURITY DEFINER), JWT, RBAC, headers, auditoria |
+| `docs/operations.md` | health checks, graceful shutdown, backup/restore, troubleshooting |
+| `docs/development.md` | comandos, testes e troubleshooting |
+
 
 O teste de isolamento é obrigatório e está em `backend/tests/api.test.ts`:
 o Tenant A **não** consegue ler, alterar ou apagar (`404`) recursos do Tenant B

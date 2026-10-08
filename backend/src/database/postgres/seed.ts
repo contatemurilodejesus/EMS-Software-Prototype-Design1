@@ -52,7 +52,9 @@ function asUuid(seedId: string): string {
 }
 
 export async function seed(
-  connectionString = getEnvironment().databaseUrl,
+  // ADMIN: o seed desliga a RLS (SET row_security = off), o que so o papel
+  // de administracao pode fazer (DATABASE_ADMIN_URL).
+  connectionString = getEnvironment().databaseAdminUrl,
 ): Promise<SeedSummary> {
   const db = createDatabase({ connectionString, applicationName: "energymatrix-seed" })
 

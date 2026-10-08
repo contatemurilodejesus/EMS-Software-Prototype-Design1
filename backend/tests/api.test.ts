@@ -37,6 +37,12 @@ before(async () => {
     EMS_LIVE: "false",
     EMS_PERSISTENCE: "memory",
     LOG_LEVEL: "error",
+    // A suite faz centenas de chamadas autenticadas em segundos: os limites
+    // de API/admin/telemetria sao liberados aqui. O limite de AUTH (10/min)
+    // permanece no padrao e e exercitado pelo teste de 429 no fim do arquivo.
+    EMS_RATE_LIMIT_API_MAX: "100000",
+    EMS_RATE_LIMIT_ADMIN_MAX: "100000",
+    EMS_RATE_LIMIT_TELEMETRY_MAX: "100000",
     SEED_ADMIN_EMAIL: ADMIN_EMAIL,
     SEED_ADMIN_PASSWORD: ADMIN_PASSWORD,
     SEED_TENANT_B_EMAIL: TENANT_B_EMAIL,
@@ -71,7 +77,7 @@ async function login(email: string, password: string): Promise<string> {
 }
 
 after(async () => {
-  container.stop()
+  await container.stop()
   await new Promise<void>((resolve) => server.close(() => resolve()))
 })
 
@@ -755,4 +761,60 @@ test("POST /api/telemetry rejeita leitura de maquina de outro tenant", async () 
     readings: [{ machineId: idB, ts: "2026-10-03T12:05:00.000Z", powerKw: 5 }],
   })
   assert.equal(body.unresolved, 1)
+})
+
+/* ------------------------------------------------------------------ */
+/* Vazamento de contexto de tenant (A -> B -> A)                       */
+/* ------------------------------------------------------------------ */
+
+test("ISOLAMENTO sequencial: A -> B -> A nao vaza contexto entre requests", async () => {
+  const primeiraA = await get<{ id: string; tenantId?: string }[]>("/machines", adminToken)
+  assert.equal(primeiraA.status, 200)
+  const idsA1 = primeiraA.body.map((m) => m.id)
+
+  const listaB = await get<{ id: string }[]>("/machines", tenantBToken)
+  assert.equal(listaB.status, 200)
+  const idsB = listaB.body.map((m) => m.id)
+
+  // Nenhuma maquina visivel em B pode aparecer em A.
+  assert.ok(idsB.length > 0, "tenant B precisa ter maquinas")
+  assert.equal(idsB.filter((id) => idsA1.includes(id)).length, 0)
+
+  // Segunda leitura em A (apos passar por B) deve ser identica a primeira:
+  // o contexto do request anterior nao pode persistir entre requisicoes.
+  const segundaA = await get<{ id: string }[]>("/machines", adminToken)
+  assert.equal(segundaA.status, 200)
+  const idsA2 = segundaA.body.map((m) => m.id)
+  assert.deepEqual(idsA2, idsA1)
+
+  // E B continua vendo somente as suas.
+  const listaB2 = await get<{ id: string }[]>("/machines", tenantBToken)
+  assert.deepEqual(listaB2.body.map((m) => m.id), idsB)
+})
+
+/* ------------------------------------------------------------------ */
+/* Rate limiting (secao 11.1) - categoria AUTH                         */
+/* ------------------------------------------------------------------ */
+
+test("rate limit AUTH: login excedido devolve 429 com Retry-After", async () => {
+  // As tentativas legitimas da suite (2 logins + 1 aceite de convite) ja
+  // contam na mesma janela de 60s; com o limite padrao de 10, bastam
+  // tentativas invalidas para estourar. Garantimos estourar com folga.
+  let sawTooMany = false
+  for (let attempt = 0; attempt < 15 && !sawTooMany; attempt++) {
+    const response = await fetch(`${base}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "ninguem@energymatrix.demo", password: "senha-errada" }),
+    })
+    if (response.status === 429) {
+      sawTooMany = true
+      const retryAfter = response.headers.get("Retry-After")
+      assert.ok(retryAfter, "429 deve expor Retry-After")
+      const body = (await response.json()) as { error?: { code?: string; message?: string } }
+      assert.equal(body.error?.code, "RATE_LIMITED")
+      assert.ok(body.error?.message)
+    }
+  }
+  assert.ok(sawTooMany, "login deve ser bloqueado apos exceder o limite")
 })

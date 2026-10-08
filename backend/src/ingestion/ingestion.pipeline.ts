@@ -35,6 +35,16 @@ export interface AlertSink {
   }): Promise<Alert | null>
 }
 
+/** Porta de saida para eventos de maquina (implementada por EventService). */
+export interface EventSink {
+  record(input: {
+    machineId: string
+    type: "RECOVERY"
+    severity: "INFO"
+    metadata: Record<string, unknown>
+  }): Promise<{ id: string }>
+}
+
 export interface IngestionDeps {
   machines: IMachineRepository
   machineStates: IMachineStateRepository
@@ -44,6 +54,7 @@ export interface IngestionDeps {
   clock: Clock
   logger: Logger
   alertSink: AlertSink
+  eventSink?: EventSink
 }
 
 export interface IngestionSummary {
@@ -166,6 +177,9 @@ export function createIngestionPipeline(deps: IngestionDeps) {
         const idleMinutes =
           derived.state === "IDLE" ? toNumber(machine.idleMinutes) + (online ? 1 : 0) : 0
 
+        // Transicao online -> offline? Capturado ANTES do update (que seta true).
+        const wasOffline = machine.online === false
+
         await deps.machines.update(machine.id, {
           power: reading.powerKw ?? machine.power,
           voltage: reading.voltageV ?? machine.voltage,
@@ -177,9 +191,30 @@ export function createIngestionPipeline(deps: IngestionDeps) {
           lastUpdate: formatTime(now),
           quality: validation.quality,
           online,
+          // Alimenta o OfflineWatchdog (D9): a RELOGIO da chegada da mensagem,
+          // nao o ts do payload (mensagem atrasada ainda prova que o gateway
+          // esta vivo). MISSING nao renova - e justamente ausencia.
+          lastMessageAt: validation.quality !== "MISSING" ? now.toISOString() : machine.lastMessageAt,
         })
 
         await deps.machineStates.openInterval(machine.id, derived.state, reading.ts)
+
+        // RECOVERY (secoes 14/15): leitura boa reativou uma maquina que o
+        // watchdog marcou OFFLINE. O update acima ja setou online=true, entao
+        // E aqui - o watchdog nao teria como distinguir. Somente na transicao
+        // false -> true: sem evento duplicado.
+        if (wasOffline && validation.quality !== "MISSING" && deps.eventSink) {
+          const event = await deps.eventSink.record({
+            machineId: machine.id,
+            type: "RECOVERY",
+            severity: "INFO",
+            metadata: { source: "ingestion", at: formatTime(now), powerKw: reading.powerKw ?? 0 },
+          })
+          log.info("Evento RECOVERY registrado pela ingestao", {
+            machineId: machine.id,
+            eventId: event.id,
+          })
+        }
 
         summary.persisted += 1
         summary.states[machine.id] = derived.state

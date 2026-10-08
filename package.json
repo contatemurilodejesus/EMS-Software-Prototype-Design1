@@ -14,11 +14,14 @@
     "verify:frontend": "node scripts/verify-frontend-api.mjs",
     "db:migrate": "node backend/src/database/postgres/migrate.ts",
     "db:seed": "node backend/src/database/postgres/seed.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p backend"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p backend",
+    "db:backup": "bash scripts/backup.sh",
+    "db:restore": "bash scripts/restore.sh"
   },
   "dependencies": {
     "express": "^5.2.1",
     "helmet": "^8.3.0",
+    "mqtt": "^5.16.0",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "react": "^19.0.0",

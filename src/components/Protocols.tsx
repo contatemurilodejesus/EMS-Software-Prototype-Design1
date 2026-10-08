@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { useApiResource, useApiAction } from "../lib/api"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 import type {
   Protocol,

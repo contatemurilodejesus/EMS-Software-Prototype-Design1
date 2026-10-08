@@ -195,6 +195,16 @@ export interface IReportRepository {
   nonMonitoredKwhDay(): Promise<number>
 }
 
+/**
+ * Heartbeat de gateways (secao 11): o adapter MQTT registra `last_seen_at` +
+ * status `online` para o identificador autenticado no broker. O CRUD completo
+ * do gateway e provisionado via seed/SQL ate a tela de gerenciamento existir.
+ */
+export interface IGatewayRepository {
+  /** true quando o identificador corresponde a um gateway do tenant. */
+  heartbeat(identifier: string, at: Date): Promise<boolean>
+}
+
 /* ------------------------------------------------------------------ */
 /* Multi-tenancy / autenticacao (secao 7)                             */
 /* ------------------------------------------------------------------ */

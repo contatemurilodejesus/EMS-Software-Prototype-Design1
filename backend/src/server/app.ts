@@ -8,6 +8,7 @@
 import express, { type Express } from "express"
 import helmet from "helmet"
 import { cors } from "../presentation/middleware/cors.ts"
+import { securityHeaders } from "../presentation/middleware/cors.ts"
 import { createApiRouter } from "../presentation/routes/index.ts"
 import {
   errorHandler,
@@ -31,8 +32,9 @@ export function createApp(options: CreateAppOptions): Express {
   const app = express()
   app.disable("x-powered-by")
 
-  // 1) correlacao -> 2) cors/helmet -> 3) json parser -> 4) logger
+  // 1) correlacao -> 2) security headers -> 3) cors -> 4) helmet -> 5) json parser -> 6) logger
   app.use(requestId())
+  app.use(securityHeaders({ isProduction: env.isProduction }))
   app.use(cors(env.corsOrigin))
   app.use(
     helmet({
@@ -43,8 +45,8 @@ export function createApp(options: CreateAppOptions): Express {
   app.use(express.json({ limit: env.bodyLimit }))
   app.use(requestLogger(logger))
 
-  // 5) rotas da API
-  app.use(env.apiPrefix, createApiRouter(services))
+  // 5) rotas da API (limites por categoria vem do environment)
+  app.use(env.apiPrefix, createApiRouter(services, env))
 
   // 6) notFound -> 7) errorHandler
   app.use(notFound())

@@ -24,16 +24,30 @@ export interface Environment {
   readonly logLevel: LogLevel
   readonly persistence: PersistenceDriver
   readonly databaseUrl: string
+  /** URL de ADMINISTRACAO (migrations/seed). Padrao = DATABASE_URL. */
+  readonly databaseAdminUrl: string
   readonly databasePoolMax: number
   readonly databaseConnectTimeoutMs: number
   readonly databaseStatementTimeoutMs: number
   readonly corsOrigin: string
   readonly bodyLimit: string
+  /** Rate limiting por categoria (secao 11.1): maximo de requisicoes/janela. */
+  readonly rateLimitAuthMax: number
+  readonly rateLimitApiMax: number
+  readonly rateLimitTelemetryMax: number
+  readonly rateLimitAdminMax: number
   /** Telemetria simulada ligada (store "ao vivo"). */
   readonly live: boolean
   readonly simulatorIntervalMs: number
   /** URL do frontend que consome esta API (apenas informativo no /health). */
   readonly frontendUrl: string
+  /** MQTT (Fase 4): ingestao de telemetria de gateways industriais. */
+  readonly mqttEnabled: boolean
+  readonly mqttUrl: string
+  readonly mqttUsername: string
+  readonly mqttPassword: string
+  /** Padrão de subscribe (wildcards MQTT). */
+  readonly mqttTopic: string
   /** Auth (secao 7/15): segredos e expiracoes (P3/P4). */
   readonly jwtAccessSecret: string
   readonly jwtRefreshSecret: string
@@ -111,14 +125,30 @@ export function buildEnvironment(env: Record<string, string | undefined> = {}): 
     logLevel: readEnum<LogLevel>(env, "LOG_LEVEL", LEVELS, "info"),
     persistence,
     databaseUrl,
+    // Migrations/seed usam o papel de ADMINISTRACAO (superuser, necessario
+    // para criar schema/politicas); o backend usa o papel comum energymatrix_app.
+    // Sem DATABASE_ADMIN_URL (dev local), os dois caminhos sao o mesmo usuario.
+    databaseAdminUrl: readString(env, "DATABASE_ADMIN_URL", databaseUrl),
     databasePoolMax: readNumber(env, "DATABASE_POOL_MAX", 10),
     databaseConnectTimeoutMs: readNumber(env, "DATABASE_CONNECT_TIMEOUT_MS", 2000),
     databaseStatementTimeoutMs: readNumber(env, "DATABASE_STATEMENT_TIMEOUT_MS", 5000),
     corsOrigin: readString(env, "CORS_ORIGIN", "*"),
     bodyLimit: readString(env, "BODY_LIMIT", "1mb"),
+    // Rate limiting categorizado (secao 11.1): autenticacao, API geral,
+    // ingestao de telemetria e operacoes administrativas.
+    rateLimitAuthMax: readNumber(env, "EMS_RATE_LIMIT_AUTH_MAX", 10),
+    rateLimitApiMax: readNumber(env, "EMS_RATE_LIMIT_API_MAX", 300),
+    rateLimitTelemetryMax: readNumber(env, "EMS_RATE_LIMIT_TELEMETRY_MAX", 120),
+    rateLimitAdminMax: readNumber(env, "EMS_RATE_LIMIT_ADMIN_MAX", 120),
     live: readBool(env, "EMS_LIVE", true),
     simulatorIntervalMs: readNumber(env, "EMS_SIMULATOR_INTERVAL_MS", 5000),
     frontendUrl: readString(env, "VITE_EMS_API_URL", ""),
+    // MQTT: opt-in (default desligado - dev sem broker nao pode quebrar).
+    mqttEnabled: readBool(env, "EMS_MQTT_ENABLED", false),
+    mqttUrl: readString(env, "EMS_MQTT_URL", "mqtt://localhost:1883"),
+    mqttUsername: readString(env, "EMS_MQTT_USERNAME", ""),
+    mqttPassword: readString(env, "EMS_MQTT_PASSWORD", ""),
+    mqttTopic: readString(env, "EMS_MQTT_TOPIC", "energy/+/machines/+/telemetry"),
     // Segredos: em producao SEM fallback (falha na partida); dev/demo usa default local.
     jwtAccessSecret: readString(
       env,

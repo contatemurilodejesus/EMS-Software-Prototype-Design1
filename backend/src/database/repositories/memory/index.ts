@@ -12,6 +12,7 @@ import type {
   IImpactAnalysisRepository,
   IInterventionRepository,
   IInviteRepository,
+  IGatewayRepository,
   IMachineEventRepository,
   IMachineRepository,
   IMachineStateRepository,
@@ -40,6 +41,7 @@ import {
   createMemoryMachineEventRepository,
   createMemoryRelationshipRepository,
 } from "./graph.repository.ts"
+import { createMemoryGatewayRepository } from "./gateway.repository.ts"
 import { createMemoryMachineStateRepository } from "./machine-state.repository.ts"
 import {
   createMemoryMachineRepository,
@@ -72,6 +74,8 @@ export interface MemoryRepositories {
   machineEvents: IMachineEventRepository
   relationships: IRelationshipRepository
   impactAnalyses: IImpactAnalysisRepository
+  /** Heartbeat de gateways (secao 11 - ingestao MQTT). */
+  gateways: IGatewayRepository
   unitOfWork: UnitOfWork
 }
 
@@ -98,6 +102,7 @@ export function createMemoryRepositories(options: CreateMemoryStateOptions = {})
     machineEvents: createMemoryMachineEventRepository(store),
     relationships: createMemoryRelationshipRepository(store),
     impactAnalyses: createMemoryImpactAnalysisRepository(store),
+    gateways: createMemoryGatewayRepository(store),
     /**
      * Adaptador em memoria nao possui transacao real. A unidade de trabalho
      * existe para que os services nao dependam de `pg`: no modo PostgreSQL ela

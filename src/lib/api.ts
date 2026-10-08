@@ -4,8 +4,8 @@
  * - Em `vite dev` / `vite preview` o backend é servido em `/api` pelo plugin Vite.
  * - Para apontar a um backend externo (ex.: `npm run server`), defina
  *   `VITE_EMS_API_URL` (ex.: http://localhost:8787).
- * - Se a API estiver indisponível, os hooks devolvem o dado de fallback (mock),
- *   mantendo o protótipo funcional offline.
+ * - Se a API estiver indisponível, os hooks mantém o placeholder e expõem
+ *   `live=false` + `error`: a falha fica visível, nunca mascarada por mock.
  *
  * AUTENTICACAO (secao 7 do documento): nenhum `fetch()` espalhado em
  * componentes. Este modulo e a unica camada que conhece token, refresh,

@@ -1,0 +1,9 @@
+# Contexto de build da imagem; nada que nao seja build precisa entrar.
+node_modules
+dist
+.git
+.figma
+*.txt
+.env
+.env.*
+!.env.example

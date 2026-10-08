@@ -10,6 +10,7 @@ import {
   ReferenceLine,
 } from "recharts"
 import { useApiResource } from "../lib/api"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 type MachineState = "OFF" | "IDLE" | "RUNNING" | "ANOMALY"
 

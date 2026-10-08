@@ -1,0 +1,10 @@
+﻿analytics/anomaly.ts
+analytics/cost.ts
+analytics/energy.ts
+analytics/idle.ts
+analytics/index.ts
+analytics/offline.ts
+analytics/quality.ts
+analytics/sectors.ts
+analytics/state.ts
+analytics/thermal.ts

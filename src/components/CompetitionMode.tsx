@@ -14,6 +14,7 @@ import {
 } from "recharts"
 
 import { useApiResource, useApiAction } from "../lib/api"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 import { LogoFull } from "./Logo"
 

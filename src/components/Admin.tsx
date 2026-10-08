@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useApiResource, useApiAction } from "../lib/api"
 import type { AdminData } from "../lib/types"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 /** Fallback local — usado quando o backend está indisponível. */
 const FALLBACK_ADMIN: AdminData = {
@@ -95,7 +96,7 @@ const EMPTY_MACHINE = {
 
 export function Admin() {
   // Cadastro, tarifas, turnos e saúde do gateway vêm do backend (/api/admin).
-  const { data: admin, refetch } = useApiResource<AdminData>(
+  const { data: admin, refetch, live, loading, error } = useApiResource<AdminData>(
     "/api/admin",
     FALLBACK_ADMIN,
     { pollMs: 20000 },
@@ -219,6 +220,7 @@ export function Admin() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-5 py-5 space-y-5">
+      <DataSourceBadge live={live} loading={loading} error={error} label="Administração" />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-sm font-semibold text-[#1F2A37]">

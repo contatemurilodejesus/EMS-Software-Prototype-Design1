@@ -11,6 +11,7 @@ import type {
   IAlertRepository,
   IAuditLogRepository,
   IConfigRepository,
+  IGatewayRepository,
   IImpactAnalysisRepository,
   IInterventionRepository,
   IInviteRepository,
@@ -42,6 +43,7 @@ import {
   createPostgresConfigRepository,
   createPostgresPlantRepository,
 } from "./config.repository.ts";
+import { createPostgresGatewayRepository } from "./gateway.repository.ts";
 import {
   createPostgresImpactAnalysisRepository,
   createPostgresMachineEventRepository,
@@ -84,6 +86,7 @@ export interface PostgresRepositories {
   invites: IInviteRepository;
   refreshTokens: IRefreshTokenRepository;
   auditLogs: IAuditLogRepository;
+  gateways: IGatewayRepository;
   unitOfWork: UnitOfWork;
 }
 
@@ -115,6 +118,7 @@ export function createPostgresRepositories(
     invites: createPostgresInviteRepository(db),
     refreshTokens: createPostgresRefreshTokenRepository(db),
     auditLogs: createPostgresAuditLogRepository(db),
+    gateways: createPostgresGatewayRepository(db),
     unitOfWork,
   };
 }

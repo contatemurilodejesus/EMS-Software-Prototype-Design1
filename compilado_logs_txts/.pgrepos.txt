@@ -1,0 +1,3 @@
+﻿backend/src/database/postgres/repositories/alert.repository.ts
+backend/src/database/postgres/repositories/graph.repository.ts
+backend/src/database/postgres/repositories/machine.repository.ts

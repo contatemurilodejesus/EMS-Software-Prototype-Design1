@@ -1,0 +1,6 @@
+﻿domain/entities\index.ts
+domain/errors\index.ts
+domain/ports\index.ts
+domain/ports\logger.ts
+domain/protocol\rules.ts
+domain/value-objects\index.ts

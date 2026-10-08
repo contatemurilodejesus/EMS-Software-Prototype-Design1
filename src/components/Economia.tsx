@@ -17,6 +17,7 @@ import {
 } from "recharts"
 import { useApiResource, useApiAction } from "../lib/api"
 import type { Economy } from "../lib/types"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 // Fallback local DETERMINÍSTICO: CUSUM de 28 dias — economia acumulada após intervenção no dia 8.
 // (Sem Math.random(): a demonstração deve ser reprodutível.)
@@ -196,7 +197,7 @@ export function Economia() {
   })
 
   // Dados de economia (CUSUM, oportunidades, intervenções) vêm do backend.
-  const { data: economy, refetch } = useApiResource<Economy>(
+  const { data: economy, refetch, live, loading, error } = useApiResource<Economy>(
     "/api/economy",
     FALLBACK_ECONOMY,
     { pollMs: 30000 },
@@ -225,6 +226,7 @@ export function Economia() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-5 py-5 space-y-5">
+      <DataSourceBadge live={live} loading={loading} error={error} label="Economia" />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

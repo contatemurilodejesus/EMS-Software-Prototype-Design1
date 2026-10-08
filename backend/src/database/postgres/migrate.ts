@@ -41,7 +41,9 @@ async function ensureRegistry(db: ReturnType<typeof createDatabase>): Promise<vo
 }
 
 export async function runMigrations(
-  connectionString = getEnvironment().databaseUrl,
+  // ADMIN: criar schema/politicas exige o papel de administracao
+  // (DATABASE_ADMIN_URL); o backend roda com o papel comum.
+  connectionString = getEnvironment().databaseAdminUrl,
 ): Promise<MigrationResult> {
   const db = createDatabase({
     connectionString,

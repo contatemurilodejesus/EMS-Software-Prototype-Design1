@@ -53,8 +53,9 @@ export function createOfflineWatchdog(ctx: ServiceContext, deps: WatchdogDepende
         const minutes = silentMinutes(machine, now)
         const wasOffline = machine.online === false
 
-        if (!Number.isFinite(minutes)) continue
-
+        // `Infinity` = nunca reportou (lastMessageAt nulo): sem telemetria
+        // nenhuma e justamente OFFLINE - o `continue` anterior escondia esse
+        // caso (maquina nova nunca era sinalizada).
         if (minutes > deps.offlineTimeoutMinutes && !wasOffline) {
           await ctx.machines.update(machine.id, { online: false, quality: "MISSING" })
           await deps.events.record({
@@ -62,7 +63,8 @@ export function createOfflineWatchdog(ctx: ServiceContext, deps: WatchdogDepende
             type: "OFFLINE",
             severity: "WARNING",
             metadata: {
-              silentMinutes: Number(minutes.toFixed(1)),
+              silentMinutes: Number.isFinite(minutes) ? Number(minutes.toFixed(1)) : null,
+              neverReported: !Number.isFinite(minutes),
               thresholdMinutes: deps.offlineTimeoutMinutes,
               at: formatDateTime(now),
             },

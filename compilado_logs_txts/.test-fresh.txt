@@ -1,0 +1,65 @@
+﻿
+> figma-make-app@1.0.0 test
+> node --test "backend/tests/*.test.ts"
+
+Ô£ö GET /api/health responde 200 com o contrato atual (103.4937ms)
+Ô£ö liveness e readiness respondem (2.5946ms)
+Ô£ö GET /api/machines devolve as maquinas do tenant com estado derivado (3.5043ms)
+Ô£ö dom├¡nio legado ├® preservado: CNC-02 ANOMALY, CNC-04 STOPPED, CNC-03 IDLE (6.8791ms)
+Ô£ö ciclo de alertas (ABERTO -> RECONHECIDO) com evid├¬ncia (3.7736ms)
+Ô£ö economia: CUSUM, oportunidades e interven├º├úo registrada (2.9144ms)
+Ô£ö vis├úo da f├íbrica: totais, setores, curva 24 h e qualidade (2.4335ms)
+Ô£ö relat├│rios devolvem as s├®ries do prot├│tipo (1.4173ms)
+Ô£ö administra├º├úo: tarifas e limiares s├úo configur├íveis (3.8557ms)
+Ô£ö cadastro de m├íquina: 201, conflito 409 e valida├º├úo 400 (5.348ms)
+Ô£ö erros seguem o padr├úo ├║nico { error: { code, message } } (1.802ms)
+Ô£ö POST /api/sim/tick avan├ºa a telemetria (ingest├úo determin├¡stica) (3.082ms)
+Ô£ö Competition Mode inicia em NORMAL com as 3 m├íquinas (1.5167ms)
+Ô£ö cen├írio IDLE gera energia/kWh e R$ improdutivos em M-001 (33.5277ms)
+Ô£ö telemetria da m├íquina do demo ├® uma s├®rie determin├¡stica (1.285ms)
+Ô£ö cen├írio ANOMALY mostra +50% sobre a baseline com evid├¬ncia (5.3526ms)
+Ô£ö cen├írio THERMAL mant├®m alerta t├®rmico persistente (18.7036ms)
+Ô£ö cen├írio OFFLINE marca aus├¬ncia de telemetria (MISSING, n├úo zero) (5.2169ms)
+Ô£ö cen├írio RECOVERY prova o ANTES x DEPOIS (-30%) (16.5957ms)
+Ô£ö interven├º├úo do demo calcula a economia simulada (1.1605ms)
+Ô£ö reprodutibilidade: mesmo cen├írio + mesmos passos = mesmos n├║meros (42.5415ms)
+Ô£ö POST /api/demo/reset volta ao estado inicial (1.4757ms)
+Ô£ö m├│dulo protocolar: lista, summary, ciclo de vida e cria├º├úo numerada (5.4459ms)
+Ô£ö listas devolvem metadados no header X-Total-Count (0.9328ms)
+Ô£ö analytics do demo exp├Áe idle, anomalies e cost (2.2442ms)
+Ô£ö rotas protegidas exigem access token (2.6206ms)
+Ô£ö health permanece publico (probes de infraestrutura) (0.8282ms)
+Ô£ö login devolve access + refresh e /auth/me devolve a identidade (0.8407ms)
+Ô£ö refresh rotaciona o token e o antigo deixa de valer (27.4413ms)
+Ô£ö credencial errada devolve mensagem generica (nao revela o e-mail) (1.1552ms)
+Ô£ö ISOLAMENTO: o Tenant A nao acessa maquina do Tenant B (404, nem trocando o id) (3.8848ms)
+Ô£ö ISOLAMENTO: listas e alertas nao vazam entre tenants (1.5634ms)
+Ô£ö ISOLAMENTO: relacoes do Tenant B nao aparecem para o Tenant A (1.2055ms)
+Ô£ö RBAC: rota /api/security e exclusiva de ADMIN (26.7903ms)
+Ô£ö convite de uso unico cria a conta e invalida o codigo (27.508ms)
+Ô£ö relacoes: valida auto-relacao, duplicidade, ciclo e tenant (5.7219ms)
+Ô£ö Machine Network devolve o grafo vindo da API (0.9824ms)
+Ô£ö contexto da maquina traz upstream, downstream e impacto potencial (1.0548ms)
+Ô£ö analise de impacto registra evidencia e classificacao (2.5935ms)
+Ô£ö analise sem maquina a jusante em IDLE devolve zero estimado (0.9451ms)
+Ô£ö eventos aceitam filtro por maquina (1.0727ms)
+Ô£ö POST /api/telemetry ingere pelo mesmo pipeline e deduplica (machine_id, ts) (1.5461ms)
+Ô£ö POST /api/telemetry rejeita leitura de maquina de outro tenant (1.3874ms)
+Ô£ö fluxo completo: telemetria -> estado -> evento -> alerta -> impacto -> intervencao -> economia -> relatorio (110.0456ms)
+Ô£ö topico valido extrai tenant (UUID) e maquina (1.1337ms)
+Ô£ö topico invalido e rejeitado (prefixo, tenant nao-UUID, sufixo) (0.1613ms)
+Ô£ö payload com alias (voltage/current/temperature) vira campos de dominio (2.8611ms)
+Ô£ö timestamp epoch em segundos e normalizado para milissegundos (0.2688ms)
+Ô£ö mensagens invalidas sao rejeitadas sem tocar o pipeline (1.2255ms)
+Ô£ö mensagem valida ingerida pelo pipeline COM o tenant do topico + heartbeat (0.8387ms)
+Ô£ö topico do Tenant B roda com o contexto do Tenant B (isolamento) (0.2017ms)
+Ô£ö falha do pipeline vira rejected + lastError (o health reflete) (0.326ms)
+Ô£ö health mqtt nunca mente: disabled sem client, unavailable com broker inacessivel (256.9679ms)
+Ôä╣ tests 53
+Ôä╣ suites 0
+Ôä╣ pass 53
+Ôä╣ fail 0
+Ôä╣ cancelled 0
+Ôä╣ skipped 0
+Ôä╣ todo 0
+Ôä╣ duration_ms 892.3388

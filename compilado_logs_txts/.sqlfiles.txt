@@ -1,0 +1,4 @@
+﻿D:\EMS-GrandPrix\sistema_estrutural\fase_teste\EnergyMatrix_M\backend\src\database\postgres\migrations\001_init.sql
+D:\EMS-GrandPrix\sistema_estrutural\fase_teste\EnergyMatrix_M\backend\src\database\postgres\migrations\002_timescale_optional.sql
+D:\EMS-GrandPrix\sistema_estrutural\fase_teste\EnergyMatrix_M\backend\src\database\postgres\migrations\003_app_role.sql
+D:\EMS-GrandPrix\sistema_estrutural\fase_teste\EnergyMatrix_M\backend\src\database\postgres\migrations\004_contract_alignment.sql

@@ -45,7 +45,16 @@ import type { ApplicationServices } from "../../application/services/index.ts"
  * Todo o restante exige access token (`authenticate`) e o `tenantId` vem das
  * claims - nunca do body/query/header (secao 7.1).
  */
-export function createApiRouter(services: ApplicationServices): Router {
+export function createApiRouter(
+  services: ApplicationServices,
+  /** Limites por categoria (secao 11.1); ausente = padroes seguros. */
+  env?: {
+    rateLimitAuthMax: number
+    rateLimitApiMax: number
+    rateLimitTelemetryMax: number
+    rateLimitAdminMax: number
+  },
+): Router {
   const router = Router()
   const c = createControllers(services)
 
@@ -56,11 +65,18 @@ export function createApiRouter(services: ApplicationServices): Router {
   router.get("/health/database", c.database)
   router.get("/health/mqtt", c.mqtt)
 
-  /* ---------------- Autenticacao (publica, com rate limiting) ---------------- */
+  /* ---------------- Autenticacao (publica, rate limit AUTH: 10/min) --------- */
   const loginLimiter = rateLimit({
     windowMs: 60_000,
-    max: 10,
+    max: env?.rateLimitAuthMax ?? 10,
     message: "Muitas tentativas de login. Aguarde um minuto.",
+  })
+
+  /* ---------------- Rate limit TELEMETRIA (ingestao) ---------------- */
+  const telemetryLimiter = rateLimit({
+    windowMs: 10_000,
+    max: env?.rateLimitTelemetryMax ?? 120,
+    message: "Limite de ingestao de telemetria excedido.",
   })
 
   router.post("/auth/login", loginLimiter, validateBody(loginSchema), c.login)
@@ -75,6 +91,25 @@ export function createApiRouter(services: ApplicationServices): Router {
   const finance = requireRole("ADMIN", "ACCOUNTING")
 
   router.use(auth)
+
+  /* ---------------- Rate limit API GERAL (autenticado) ---------------- */
+  const apiLimiter = rateLimit({
+    windowMs: 60_000,
+    max: env?.rateLimitApiMax ?? 300,
+    message: "Limite de requisicoes excedido. Tente novamente em instantes.",
+  })
+  router.use(apiLimiter)
+
+  /* ---------------- Rate limit ADMIN (operacoes criticas) ---------------- */
+  const adminLimiter = rateLimit({
+    windowMs: 60_000,
+    max: env?.rateLimitAdminMax ?? 120,
+    message: "Limite de operacoes administrativas excedido.",
+  })
+  router.use("/admin", adminLimiter)
+  router.use("/security", adminLimiter)
+  router.use("/users", adminLimiter)
+  router.use("/invites", adminLimiter)
 
   router.get("/auth/me", c.me)
   router.post("/auth/password", validateBody(passwordChangeSchema), c.changePassword)
@@ -176,7 +211,7 @@ export function createApiRouter(services: ApplicationServices): Router {
   router.post("/admin/shifts/:id/toggle", admin, validateBody(emptySchema), c.toggleShift)
 
   /* ---------------- Telemetria persistente (D4: JWT + mesmo pipeline) ---------------- */
-  router.post("/telemetry", admin, c.ingestTelemetry)
+  router.post("/telemetry", admin, telemetryLimiter, c.ingestTelemetry)
 
   /* ---------------- Simulação ---------------- */
   router.post("/sim/tick", validateBody(emptySchema), c.simTick)

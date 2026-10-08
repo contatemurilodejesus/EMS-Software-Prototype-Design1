@@ -88,7 +88,18 @@ docker compose up -d postgres
 
 ## Proximo passo
 
-Completar os repositories Postgres restantes (machines, telemetry, machineStates, alerts, machineEvents, relationships, impactAnalyses, auditLogs, config, plants, protocols, scenarios, reports) e ligar `EMS_PERSISTENCE=postgres` no container.
+**FIM DA FASE MVP HARDENING (ver README + docs/security.md e docs/operations.md).**
+
+- Repositories Postgres completos (identity, machines, telemetry, machine_states,
+  alerts, interventions, audit_logs, relationships, impact_analyses, etc.) — Fase 2
+  concluída; `node --test` = 55/55.
+- RLS pré-tenant no login/refresh/logout: migration `005_auth_pre_tenant.sql`
+  (SECURITY DEFINER + `energymatrix_app` sem superuser/bypassrls).
+- Papéis separados: `DATABASE_URL` (app) / `DATABASE_ADMIN_URL` (admin/migrate/seed).
+- Rate limiting categorizado (auth, api geral, telemetria, admin).
+- Observabilidade: health/live/ready/database/mqtt com statuses reais (503 em degraded).
+- Graceful shutdown aguarda `pool.close()` antes de sair.
+
 
 ## Styling
 

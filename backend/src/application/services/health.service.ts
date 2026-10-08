@@ -20,6 +20,20 @@ export interface HealthDependencies {
   alertsOpen: () => Promise<number>
   databaseReady: () => Promise<boolean>
   persistence: string
+  /**
+   * Estado real do client MQTT (Fase 4). Ausente = broker nao configurado
+   * no container; presente devolve disabled|ok|unavailable com contadores.
+   */
+  mqttHealth?: () => MqttHealthReport
+}
+
+export interface MqttHealthReport {
+  status: string
+  note?: string
+  broker?: string
+  topic?: string
+  lastMessageAt?: string | null
+  counters?: Record<string, number>
 }
 
 export function createHealthService(runtime: HealthRuntime, deps: HealthDependencies) {
@@ -59,9 +73,13 @@ export function createHealthService(runtime: HealthRuntime, deps: HealthDependen
     return { status: (await deps.databaseReady()) ? "ok" : "unavailable" }
   }
 
-  /** Health MQTT: o broker configurado responde MQTT CONNACK. */
-  async function mqtt(): Promise<{ status: string; note?: string }> {
-    return { status: "unknown", note: "broker MQTT nao configurado" }
+  /**
+   * Health MQTT (Fase 4): estado REAL do client - `disabled` quando
+   * `EMS_MQTT_ENABLED=false`, `ok` conectado, `unavailable` desconectado.
+   * Nunca retorna "healthy" para broker inacessivel (secao 28).
+   */
+  function mqtt(): MqttHealthReport {
+    return deps.mqttHealth?.() ?? { status: "unknown", note: "broker MQTT nao configurado" }
   }
 
   return { health, live, ready, database, mqtt }

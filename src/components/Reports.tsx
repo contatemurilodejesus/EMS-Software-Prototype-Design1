@@ -16,6 +16,7 @@ import {
 } from "recharts"
 import { useApiResource } from "../lib/api"
 import type { Reports as ReportsData } from "../lib/types"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 /** Fallbacks locais — usados quando o backend está indisponível. */
 const fallbackShiftData = [

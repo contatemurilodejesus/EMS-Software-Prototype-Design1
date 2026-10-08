@@ -61,6 +61,10 @@ export interface Gateway {
   label: string
   status: string
   sub: string
+  /** Identificador do dispositivo no broker (corpo da mensagem MQTT). */
+  identifier?: string
+  /** Ultimo heartbeat recebido (ISO 8601), quando conhecido. */
+  lastSeenAt?: string
 }
 
 /** Indicador da saude do gateway (chave/valor, exibido em cards). */

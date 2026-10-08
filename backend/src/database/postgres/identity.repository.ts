@@ -146,10 +146,15 @@ export function createPostgresUserRepository(db: DatabasePort): IUserRepository 
     /**
      * Busca global por e-mail (login). O e-mail e unico entre tenants (D15),
      * entao filtrar por tenant aqui seria um bug, nao uma protecao.
+     *
+     * RLS: o login roda ANTES de existir `app.tenant_id`, e o papel da
+     * aplicacao nao pode pular a RLS. Por isso a busca e a funcao
+     * SECURITY DEFINER `app_auth_find_user_by_email` (migration 005), que
+     * devolve somente os campos de autenticacao.
      */
     async findByEmail(email: string): Promise<User | null> {
       const { rows } = await db.query(
-        `SELECT ${COLUMNS} FROM users WHERE lower(email) = lower($1)`,
+        "SELECT * FROM app_auth_find_user_by_email($1)",
         [email],
       )
       return rows[0] ? toUser(rows[0]) : null
@@ -249,8 +254,10 @@ export function createPostgresInviteRepository(db: DatabasePort): IInviteReposit
     },
 
     async findByCodeHash(codeHash: string): Promise<Invite | null> {
+      // Pre-tenant (aceite do convite nao tem sessao): funcao SECURITY
+      // DEFINER da migration 005 - SELECT direto veria 0 linhas sob RLS.
       const { rows } = await db.query(
-        `SELECT ${COLUMNS} FROM invites WHERE code_hash = $1`,
+        "SELECT * FROM app_auth_find_invite_by_code_hash($1)",
         [codeHash],
       )
       return rows[0] ? toInvite(rows[0]) : null
@@ -315,10 +322,11 @@ export function createPostgresRefreshTokenRepository(
 
   return {
     async findByHash(tokenHash: string): Promise<RefreshToken | null> {
+      // Pre-tenant (refresh/logout rodam sem sessao): funcao SECURITY
+      // DEFINER da migration 005 devolve o tenant para a revogacao
+      // posterior rodar dentro da RLS do proprio tenant.
       const { rows } = await db.query(
-        `SELECT id::text, tenant_id::text, user_id::text, token_hash,
-                expires_at, revoked_at, ip, user_agent
-           FROM refresh_tokens WHERE token_hash = $1`,
+        "SELECT * FROM app_auth_find_refresh_by_hash($1)",
         [tokenHash],
       )
       return rows[0] ? toToken(rows[0]) : null

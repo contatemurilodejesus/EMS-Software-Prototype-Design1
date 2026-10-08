@@ -5,9 +5,9 @@
  * repositories, o contexto dos services, a fonte de telemetria, o pipeline de
  * ingestao, o agendador e os application services.
  *
- * Fallback da demonstracao (secao 22): quando o PostgreSQL nao esta acessivel,
- * o container cai para os adaptadores em memoria e registra o aviso - a demo
- * continua funcionando sem Docker.
+ * Persistencia SEM fallback silencioso (secao 22): `EMS_PERSISTENCE=postgres`
+ * exige PostgreSQL acessivel e falha rapida na partida; `EMS_PERSISTENCE=memory`
+ * mantem a demonstracao rodando sem Docker.
  */
 
 import { getEnvironment, type Environment } from "../config/environment.ts"
@@ -16,6 +16,7 @@ import { createLogger, toLoggerPort } from "../infrastructure/logger.ts"
 import { createSystemClock } from "../infrastructure/clock.ts"
 import { createScheduler, type Scheduler } from "../infrastructure/scheduler.ts"
 import { createSimulatorSource } from "../infrastructure/sources/simulator.source.ts"
+import { createMqttTelemetrySource } from "../infrastructure/sources/mqtt.source.ts"
 import { createIngestionPipeline } from "../ingestion/ingestion.pipeline.ts"
 import { createMemoryRepositories, type MemoryRepositories } from "../database/repositories/memory/index.ts"
 import { createSeedUsers } from "../database/seeds/seed-data.ts"
@@ -40,7 +41,7 @@ import {
 import type { IngestionSummary } from "../ingestion/ingestion.pipeline.ts"
 import type { ServiceContext } from "../application/context.ts"
 import { TENANT_A_ID } from "../database/seeds/seed-data.ts"
-import { runWithActor } from "../shared/tenant-context.ts"
+import { runWithActor, currentTenantId } from "../shared/tenant-context.ts"
 import type { Logger } from "../domain/ports/index.ts"
 import { createCompetitionSimulator, type CompetitionSimulator } from "../simulator/competition.ts"
 import { DEFAULT_TARIFF } from "../analytics/index.ts"
@@ -58,7 +59,8 @@ export interface Container {
   lastTickAt: () => Date
   databaseReady: () => Promise<boolean>
   persistence: string
-  stop: () => void
+  /** Para agendadores/MQTT e fecha o pool (quando ha). Assincrono de proposito. */
+  stop: () => Promise<void>
 }
 
 export async function createContainer(
@@ -92,7 +94,17 @@ export async function createContainer(
       throw new Error("EMS_PERSISTENCE=postgres requer DATABASE_URL (ou conexao no compose).");
     }
     // Sem fallback silencioso: o banco deve estar acessivel antes de subir.
-    const db = createDatabase({ connectionString, resolveTenant: () => null });
+    //
+    // resolveTenant lê o tenant do AsyncLocalStorage da requisicao (middleware
+    // authenticate chama runWithActor antes de encaminhar). Sem contexto
+    // (migrations, seed, jobs) retorna null - a RLS entao aplica o filtro.
+    const db = createDatabase({
+      connectionString,
+      resolveTenant: () => {
+        try { return currentTenantId() }
+        catch { return null }
+      },
+    });
     const deadline = Date.now() + (env.databaseConnectTimeoutMs ?? 30_000);
     while (!(await db.healthCheck())) {
       if (Date.now() > deadline) {
@@ -144,7 +156,21 @@ export async function createContainer(
   })
 
   const source = createSimulatorSource({ clock })
-  const pipeline = createIngestionPipeline({ ...ctx, alertSink: alertService })
+
+  // Relacoes e eventos ANTES do pipeline: o RECOVERY e registrado na propria
+  // ingestao quando a leitura boa reativa uma maquina que o watchdog marcou
+  // OFFLINE (secoes 14/15) - o watchdog so cuida do caminho OFFLINE.
+  const relationshipService = createRelationshipService(ctx)
+  const eventService = createEventService(ctx, {
+    relationships: relationshipService,
+    impactMinWindowMinutes: env.impactMinWindowMinutes,
+  })
+
+  const pipeline = createIngestionPipeline({
+    ...ctx,
+    alertSink: alertService,
+    eventSink: eventService,
+  })
 
   let tickCount = 0
   let lastTick = startedAt
@@ -177,6 +203,23 @@ export async function createContainer(
     pipeline,
   })
 
+  // Fonte MQTT (Fase 4): opt-in por EMS_MQTT_ENABLED e, quando ligada, entrega
+  // os payloads ao MESMO pipeline do simulador/HTTP (D19 - sem caminho paralelo).
+  const mqttSource = createMqttTelemetrySource({
+    config: {
+      enabled: env.mqttEnabled,
+      url: env.mqttUrl,
+      username: env.mqttUsername,
+      password: env.mqttPassword,
+      topic: env.mqttTopic,
+    },
+    pipeline,
+    gateways: repos.gateways,
+    clock,
+    logger,
+  })
+  if (env.mqttEnabled) mqttSource.start()
+
   const healthService = createHealthService(
     {
       version: env.version,
@@ -199,6 +242,30 @@ export async function createContainer(
         return true;
       },
       persistence: env.persistence,
+      /** Estado REAL do client MQTT (Fase 4) - secao 28: nunca "healthy" falso. */
+      mqttHealth: () => {
+        const s = mqttSource.status()
+        if (!s.enabled) {
+          return { status: "disabled", note: "EMS_MQTT_ENABLED desligado", broker: s.broker, topic: s.topic }
+        }
+        if (s.connected) {
+          return {
+            status: "ok",
+            broker: s.broker,
+            topic: s.topic,
+            lastMessageAt: s.lastMessageAt,
+            counters: { ...s.counters },
+          }
+        }
+        return {
+          status: "unavailable",
+          note: s.lastError ?? "broker desconectado",
+          broker: s.broker,
+          topic: s.topic,
+          lastMessageAt: s.lastMessageAt,
+          counters: { ...s.counters },
+        }
+      },
     },
   )
 
@@ -216,18 +283,24 @@ export async function createContainer(
     },
   })
 
-  const relationshipService = createRelationshipService(ctx)
-
-  const eventService = createEventService(ctx, {
-    relationships: relationshipService,
-    impactMinWindowMinutes: env.impactMinWindowMinutes,
-  })
+  // relationshipService/eventService: criados antes do pipeline (RECOVERY na
+  // ingestao) - ver bloco do composition root acima.
 
   const watchdog = createOfflineWatchdog(ctx, {
     events: eventService,
     offlineTimeoutMinutes: env.offlineTimeoutMinutes,
     systemActor: { tenantId: TENANT_A_ID, userId: "system", role: "ADMIN" },
   })
+
+  // Watchdog de OFFLINE agendado (docs/backend.md registrava como pendente):
+  // varre o tenant do demo a cada 60 s com tenant EXPLICITO (secao 7.1, item 5).
+  // O sweep multi-tenant exige contexto privilegiado de banco - proxima etapa.
+  const watchdogScheduler = createScheduler({
+    intervalMs: 60_000,
+    run: () => watchdog.run(TENANT_A_ID),
+    onError: (error) => logger.error("watchdog_failed", { error: String(error) }),
+  })
+  watchdogScheduler.start()
 
   const services: ApplicationServices = {
     machines: machineService,
@@ -256,8 +329,23 @@ export async function createContainer(
     startedAt,
     ticks: () => tickCount,
     lastTickAt: () => lastTick,
-    databaseReady: async () => true,
+    /** Mesma verificacao do healthService: `SELECT 1` quando ha pool. */
+    databaseReady: async () => (pool ? pool.healthCheck() : true),
     persistence: env.persistence,
-    stop: () => scheduler.stop(),
+    /** Para agendadores/MQTT e fecha o pool - usado pelo graceful shutdown. */
+    stop: async () => {
+      scheduler.stop()
+      watchdogScheduler.stop()
+      mqttSource.stop()
+      // Graceful shutdown: fecha conexoes abertas do pool ANTES do processo
+      // morrer. O shutdown handler aguarda esta promise.
+      if (pool) {
+        try {
+          await pool.close()
+        } catch (error) {
+          logger.error("pool_close_failed", { error: String(error) })
+        }
+      }
+    },
   }
 }

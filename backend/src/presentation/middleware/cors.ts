@@ -19,12 +19,46 @@ export function cors(origin: string | undefined): RequestHandler {
     }
 
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Accept,X-Request-Id")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Accept,X-Request-Id,X-Total-Count")
     res.setHeader("Access-Control-Expose-Headers", "X-Total-Count,X-Request-Id")
 
     if (req.method === "OPTIONS") {
       res.status(204).end()
       return
+    }
+
+    next()
+  }
+}
+
+/**
+ * Headers de seguranca ESTRITO (secao 11.2):
+ *   - contentSecurityPolicy: bloqueia XSS/styles injection
+ *   - xContentTypeOptions: evita MIME sniffing
+ *   - xFrameOptions: evita clickjacking
+ *   - xXSSProtection: mitigates reflex XSS (legacy browsers)
+ *   - referrerPolicy: controla retorno de headers Referer
+ *   - hsts: força HTTPS no browser
+ */
+export function securityHeaders(env: { isProduction: boolean }): RequestHandler {
+  return (_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff")
+    res.setHeader("X-Frame-Options", "DENY")
+    res.setHeader("X-XSS-Protection", "1; mode=block")
+    res.setHeader("Referrer-Policy", "same-origin")
+    res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+    // CSP vem do helmet (disable no config para manter o dev simples)
+    if (env.isProduction) {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.example.com;",
+      )
+      res.setHeader(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload",
+      )
     }
 
     next()

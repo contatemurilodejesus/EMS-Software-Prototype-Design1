@@ -1,5 +1,25 @@
 name: energymatrix
 
+# ---------------------------------------------------------------------------
+# Variaveis do backend (ancora YAML reutilizada por migrate e backend).
+# Segredos: em producao defina JWT_* no .env - os defaults sao de DESENVOLVIMENTO.
+# ---------------------------------------------------------------------------
+x-backend-env: &backend-env
+  NODE_ENV: production
+  EMS_PERSISTENCE: postgres
+  # Papel COMUM da aplicacao (NOSUPERUSER NOBYPASSRLS - migration 003): a RLS
+  # so vale porque o backend NAO consegue pula-la.
+  DATABASE_URL: postgres://energymatrix_app:energymatrix_app@postgres:5432/energymatrix
+  # Papel de ADMINISTRACAO (migrations/seed): cria schema, politicas e desliga
+  # a RLS no seed. O backend NUNCA usa esta URL.
+  DATABASE_ADMIN_URL: postgres://energymatrix:energymatrix@postgres:5432/energymatrix
+  EMS_API_PORT: "8787"
+  EMS_MQTT_ENABLED: "true"
+  EMS_MQTT_URL: mqtt://mosquitto:1883
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-energymatrix-dev-access-secret}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-energymatrix-dev-refresh-secret}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL + TimescaleDB (Fase 2)
@@ -42,8 +62,107 @@ services:
     networks:
       - ems
 
+  # ---------------------------------------------------------------------------
+  # MQTT broker (Fase 4) - ingestao de telemetria industrial real
+  #
+  # O backend (EMS_MQTT_ENABLED=true) assina energy/+/machines/+/telemetry.
+  # DEV: allow_anonymous no mosquitto.conf. PRODUCAO: credencial por gateway
+  # + ACL por tenant (docs/mqtt.md).
+  # ---------------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: energymatrix-mosquitto
+    restart: unless-stopped
+    ports:
+      - "${EMS_MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      # mosquitto_pub so retorna 0 quando o broker aceitou a conexao.
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t ems/health -m ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - ems
+
+  # ---------------------------------------------------------------------------
+  # Migracoes + seed (Fase 8): roda UMA vez entre postgres saudavel e o backend.
+  # ---------------------------------------------------------------------------
+  migrate:
+    build: &backend-build
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: energymatrix-backend
+    container_name: energymatrix-migrate
+    command:
+      - sh
+      - -c
+      - node backend/src/database/postgres/migrate.ts && node backend/src/database/postgres/seed.ts
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ems
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Backend (API oficial em /api) - EMS_PERSISTENCE=postgres, sem fallback.
+  # ---------------------------------------------------------------------------
+  backend:
+    build: *backend-build
+    image: energymatrix-backend
+    container_name: energymatrix-backend
+    environment: *backend-env
+    ports:
+      - "${EMS_BACKEND_PORT:-8787}:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8787/api/health >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ems
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend: nginx servindo o dist e fazendo proxy de /api para o backend.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: energymatrix-frontend
+    ports:
+      - "${EMS_FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ems
+    restart: unless-stopped
+
 volumes:
   postgres-data:
+    driver: local
+  mosquitto-data:
     driver: local
 
 networks:

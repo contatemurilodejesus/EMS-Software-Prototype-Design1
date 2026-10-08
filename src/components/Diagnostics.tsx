@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useApiResource, useApiAction } from "../lib/api"
+import { DataSourceBadge } from "./DataSourceBadge"
 
 type Severity = "critical" | "high" | "medium"
 type AlertStatus = "open" | "acknowledged" | "resolved"
@@ -207,7 +208,7 @@ export function Diagnostics() {
   const [statuses, setStatuses] = useState<Record<string, AlertStatus>>({})
 
   // Alertas vindos do backend; o ciclo de vida é persistido via /api/alerts/:id/advance.
-  const { data: alerts, refetch } = useApiResource<Alert[]>(
+  const { data: alerts, refetch, live, loading, error } = useApiResource<Alert[]>(
     "/api/alerts",
     fallbackAlerts,
     { pollMs: 15000 },
@@ -244,6 +245,7 @@ export function Diagnostics() {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-5 py-5 space-y-4">
+      <DataSourceBadge live={live} loading={loading} error={error} label="Alertas" />
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>

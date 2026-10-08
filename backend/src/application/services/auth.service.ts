@@ -9,6 +9,7 @@
  * ("credenciais invalidas") - nunca revela se o e-mail existe.
  */
 
+import { randomUUID } from "node:crypto"
 import {
   ConflictError,
   ERROR_CODES,
@@ -26,7 +27,7 @@ import {
   verifyJwt,
   verifyPassword,
 } from "../../shared/security/index.ts"
-import { currentActor } from "../../shared/tenant-context.ts"
+import { currentActor, runWithActor } from "../../shared/tenant-context.ts"
 import type { ServiceContext } from "../context.ts"
 
 export interface AuthDependencies {
@@ -162,9 +163,18 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
       throw new UnauthorizedError("Usuario sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
     }
 
-    await ctx.users.update(user.id, user.tenantId, {
-      lastLoginAt: ctx.clock.now().toISOString(),
-    })
+    // Escritas pos-login (ultimo login + refresh token) rodam COM o tenant
+    // do usuario: a RLS exige `app.tenant_id`, e este wrap e o unico ponto
+    // que cria contexto antes da sessao existir.
+    const session = await runWithActor(
+      { tenantId: user.tenantId, userId: user.id, role: user.role },
+      async () => {
+        await ctx.users.update(user.id, user.tenantId, {
+          lastLoginAt: ctx.clock.now().toISOString(),
+        })
+        return issueSession(user)
+      },
+    )
     await audit({
       tenantId: user.tenantId,
       userId: user.id,
@@ -173,13 +183,16 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
     })
 
     log.info("Login realizado", { userId: user.id, tenantId: user.tenantId })
-    return issueSession(user)
+    return session
   }
 
   /** POST /api/auth/refresh - rotaciona o refresh e devolve novo access. */
   async function refresh(plain: string): Promise<AuthSession> {
     if (!plain) throw new UnauthorizedError("Refresh token ausente", ERROR_CODES.TOKEN_INVALID)
 
+    // Lookup pre-tenant via funcao SECURITY DEFINER (migration 005); as
+    // escritas abaixo (revoke + novo refresh) rodam sob a RLS do tenant
+    // proprio do token validado.
     const stored = await ctx.refreshTokens.findByHash(sha256(plain))
     const now = ctx.clock.now()
 
@@ -190,24 +203,44 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
       throw new UnauthorizedError("Refresh token expirado", ERROR_CODES.TOKEN_EXPIRED)
     }
 
-    await ctx.refreshTokens.revoke(stored.tokenHash, now)
+    // `role` e interno neste wrap (a RLS so usa tenantId); o RBAC do
+    // request usa o actor do middleware, derivado do access token valido.
+    return runWithActor(
+      { tenantId: stored.tenantId, userId: stored.userId, role: "ADMIN" },
+      async () => {
+        await ctx.refreshTokens.revoke(stored.tokenHash, now)
 
-    const user = await ctx.users.findById(stored.userId, stored.tenantId)
-    if (!user || user.status !== "active") {
-      throw new UnauthorizedError("Usuario sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
-    }
+        const user = await ctx.users.findById(stored.userId, stored.tenantId)
+        if (!user || user.status !== "active") {
+          throw new UnauthorizedError("Usuario sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
+        }
 
-    return issueSession(user)
+        return issueSession(user)
+      },
+    )
   }
 
   /** POST /api/auth/logout - revoga o refresh informado. */
   async function logout(plain: string | undefined): Promise<{ revoked: boolean }> {
     if (!plain) return { revoked: false }
-    const revoked = await ctx.refreshTokens.revoke(sha256(plain), ctx.clock.now())
+    const tokenHash = sha256(plain)
+
+    // A RLS so permite revogar COM o tenant do registro: o lookup pre-tenant
+    // (funcao SECURITY DEFINER da 005) devolve o tenant e o revoke roda
+    // dentro do contexto proprio do token.
+    const stored = await ctx.refreshTokens.findByHash(tokenHash)
+    let revoked = false
+    if (stored) {
+      revoked = await runWithActor(
+        { tenantId: stored.tenantId, userId: stored.userId, role: "ADMIN" },
+        () => ctx.refreshTokens.revoke(tokenHash, ctx.clock.now()),
+      )
+    }
+
     const actor = currentActor()
     await audit({
-      tenantId: actor?.tenantId ?? null,
-      userId: actor?.userId ?? null,
+      tenantId: actor?.tenantId ?? stored?.tenantId ?? null,
+      userId: actor?.userId ?? stored?.userId ?? null,
       action: "auth.logout",
       resource: "auth",
     })
@@ -301,8 +334,9 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
 
     // O e-mail do convidado fica disponivel no invite; o cadastro usa o
     // e-mail informado no pedido de convite (o codigo e o que autoriza).
+    // id em UUID (node:crypto): o banco usa PK UUID em `users`.
     const user: User = {
-      id: `usr-${now.getTime()}-${sha256(name).slice(0, 8)}`,
+      id: randomUUID(),
       tenantId: invite.tenantId,
       name,
       email: String(input.email ?? `convite-${invite.id}@energymatrix.local`).trim().toLowerCase(),
@@ -313,22 +347,29 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     }
-    await ctx.users.save(user)
+    // Escritas do aceite rodam COM o tenant do convite (RLS): salvar o
+    // usuario, marcar o codigo como usado e emitir a sessao.
+    return runWithActor(
+      { tenantId: invite.tenantId, userId: user.id, role: user.role },
+      async () => {
+        await ctx.users.save(user)
 
-    await ctx.invites.update(invite.id, invite.tenantId, {
-      usedAt: now.toISOString(),
-      usedBy: user.id,
-    })
+        await ctx.invites.update(invite.id, invite.tenantId, {
+          usedAt: now.toISOString(),
+          usedBy: user.id,
+        })
 
-    await audit({
-      tenantId: invite.tenantId,
-      userId: user.id,
-      action: "invite.accepted",
-      resource: "user",
-      resourceId: user.id,
-    })
+        await audit({
+          tenantId: invite.tenantId,
+          userId: user.id,
+          action: "invite.accepted",
+          resource: "user",
+          resourceId: user.id,
+        })
 
-    return issueSession(user)
+        return issueSession(user)
+      },
+    )
   }
 
   /** Troca de senha do proprio usuario (POST /api/auth/password). */
@@ -392,17 +433,25 @@ export function createAuthService(ctx: ServiceContext, deps: AuthDependencies) {
       throw new UnauthorizedError("Refresh token nao vale como acesso", ERROR_CODES.TOKEN_INVALID)
     }
 
-    const user = await ctx.users.findById(claims.sub, claims.tenantId)
-    if (!user || user.status !== "active") {
-      throw new UnauthorizedError("Usuario sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
-    }
+    // As claims sao assinadas (confiaveis): o wrap usa o tenant DELAS para
+    // que `users`/`tenants` sejam lidos sob a RLS do proprio token - um
+    // access token de outro tenant nao enxerga o usuario.
+    return runWithActor(
+      { tenantId: claims.tenantId, userId: claims.sub, role: claims.role as UserRole },
+      async () => {
+        const user = await ctx.users.findById(claims.sub, claims.tenantId)
+        if (!user || user.status !== "active") {
+          throw new UnauthorizedError("Usuario sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
+        }
 
-    const tenant = await deps.tenants.findById(claims.tenantId)
-    if (!tenant || tenant.status !== "active") {
-      throw new UnauthorizedError("Tenant sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
-    }
+        const tenant = await deps.tenants.findById(claims.tenantId)
+        if (!tenant || tenant.status !== "active") {
+          throw new UnauthorizedError("Tenant sem acesso ativo", ERROR_CODES.UNAUTHORIZED)
+        }
 
-    return { user, tenant }
+        return { user, tenant }
+      },
+    )
   }
 
   return {
